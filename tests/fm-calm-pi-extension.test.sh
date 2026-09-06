@@ -3554,7 +3554,7 @@ if (!serialized.includes("firstmate-synthetic-input") || !serialized.includes("/
 const synthetic = entries.find((entry) => entry.type === "custom_message" && entry.customType === "firstmate-synthetic-input");
 if (!synthetic || synthetic.display) process.exit(1);
 JS
-  chrome=$(find_chrome) || fail "Chrome or Chromium is required for rendered export DOM assertions"
+  if chrome=$(find_chrome); then
   "$chrome" \
     --headless=new \
     --disable-gpu \
@@ -3598,6 +3598,9 @@ for (const current of ["CURRENT_WATCHER_E2E", "CURRENT_TURN_END_E2E", "CURRENT_A
 }
 if (!tree.includes("firstmate-synthetic-input") || !tree.includes("/tmp/probe.status")) process.exit(1);
 JS
+  else
+    printf 'skip: Chrome is not configured; rendered export DOM assertions require FM_CHROME_BIN\n'
+  fi
   # Calm returns the transcript to its own presentation once the export has been
   # rendered. That repaint runs on the macrotask right after Pi prints the export
   # confirmation, so it must not overwrite it: the captain has to keep seeing where
