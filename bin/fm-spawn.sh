@@ -1409,8 +1409,7 @@ launch_template() {
     # alone disables the feature; keep both so a managed override of one still
     # leaves the other in force. Both are per-launch, scoped to this invocation only,
     # and never touch the captain's global ~/.claude/settings.json.
-    # fm-claude-rc-off.sh owns per-launch Remote Control enforcement.
-    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __RCOFF__ launch --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off"}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off"}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     codex)
       if [ "$kind" = secondmate ]; then
         printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
@@ -3719,7 +3718,14 @@ LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OMPEXT__/$sq_ompext}
 LAUNCH=${LAUNCH//__OMPWORKERCFG__/$sq_ompcfg}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
-LAUNCH=${LAUNCH//__RCOFF__/"$(shell_quote "$FM_ROOT/bin/fm-claude-rc-off.sh")"}
+if [ "$HARNESS" = claude ]; then
+  if [[ "$LAUNCH" =~ ^([[:space:]]*([A-Za-z_][^[:space:]]*=[^[:space:]]*[[:space:]]+)*)(([^[:space:]]*/)?claude)([[:space:]].*)?$ ]]; then
+    LAUNCH="${BASH_REMATCH[1]}$(shell_quote "$FM_ROOT/bin/fm-claude-rc-off.sh") launch${BASH_REMATCH[5]}"
+  else
+    echo "error: Claude launch could not be wrapped with RC-off enforcement" >&2
+    exit 1
+  fi
+fi
 case "$HARNESS" in
   pi|pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;
