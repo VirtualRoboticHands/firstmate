@@ -338,6 +338,27 @@ Its `remove` action excises only the marker-delimited Firstmate region and remov
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
 For omp secondmate launches, `fm-spawn.sh` passes no `-e` at all: omp auto-discovers the home's tracked `.omp/extensions/` with no trust gate, and naming a discovered file with `-e` as well loads it twice; every omp launch instead carries the tracked `.omp/fm-worker-overlay.yml` posture overlay through `--config`, which [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns.
 
+## Claude Remote Control best-effort default
+
+Before spawning a Claude crewmate or secondmate, install Firstmate's idempotent machine-managed default once on each host with root privileges:
+
+```sh
+sudo bin/fm-claude-rc-off.sh install-policy
+```
+
+Linux installs `/etc/claude-code/managed-settings.d/50-firstmate-remote-control.json`, and macOS installs `/Library/Application Support/ClaudeCode/managed-settings.d/50-firstmate-remote-control.json`.
+The helper requires the production fragment to be a regular root-owned file that is not writable by group or others.
+An identified Claude launch refuses before creating task state unless that fragment contains `disableRemoteControl=true` and the resolved Claude executable is version 2.1.128 or newer.
+Canonical launches bind that check and the backend launch to the same absolute executable.
+Identified raw Claude launches retain the authored command, but Firstmate also resolves the executable in the launch pane, including an unquoted literal leading `PATH=...` assignment, and refuses a resolution or version mismatch.
+A raw command with a quoted, escaped, expanded, or otherwise ambiguous leading assignment is refused; use a managed harness launch or an unquoted literal assignment instead.
+Raw launches identified as another harness remain independent of this Claude policy setup.
+
+This mechanism makes RC-off the effective default for normal fleet launches, but it does not prove Claude's effective resolved setting.
+A later alphabetic file-managed fragment or a higher server-managed or MDM tier can override the fragment, and an adversarial raw-shell wrapper can deliberately evade the version preflight.
+Those cases are outside the captain-authorized threat model because neither Claude nor Herdr exposes a machine-readable effective-state oracle.
+[`verification/runtime-backends.md`](verification/runtime-backends.md#claude-remote-control-best-effort-default) owns the repeatable portable regression and opt-in real-harness observation for this boundary.
+
 ## Worker launch environment (config/launch-env-allowlist)
 
 The optional local, gitignored `config/launch-env-allowlist` limits the ambient environment passed to newly launched workers, scouts, and secondmates, including relaunches.
