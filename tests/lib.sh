@@ -32,6 +32,8 @@ FM_TEST_LIB_SOURCED=1
 # the behavior under test can even run. 022 is the conventional default this
 # suite's fixtures were written against.
 umask 022
+# Tests provide their own Herdr identities after loading the fixture library.
+unset FM_BACKEND HERDR_ENV HERDR_PANE_ID HERDR_SESSION HERDR_SOCKET_PATH HERDR_TAB_ID HERDR_WORKSPACE_ID
 
 # Exempt firstmate's own test suite from the gate-lifecycle refusal
 # (bin/fm-gate-refuse-lib.sh). The no-mistakes gate runs this suite FROM a gate
