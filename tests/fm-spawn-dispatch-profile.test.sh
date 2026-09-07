@@ -493,7 +493,7 @@ test_raw_claude_identical_backend_executable_launches_unchanged() {
 }
 
 test_raw_claude_path_assignment_uses_assigned_executable() {
-  local rec id out status raw assigned_bin caller
+  local rec id out status raw assigned_bin
   id="profile-raw-claude-path-assignment-${RANDOM}"
   rec=$(make_spawn_case "$id" claude "$id")
   read_case_record "$rec"
@@ -507,16 +507,46 @@ fi
 SH
   chmod +x "$assigned_bin/claude"
   raw="PATH=$assigned_bin:$PATH claude --remote-control"
-  caller="$FAKEBIN_DIR/claude"
 
   out=$(FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
     run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
   status=$?
-  expect_code 1 "$status" "raw Claude launch should honor its leading PATH assignment during preflight"
-  assert_contains "$out" "Firstmate resolved '$caller' (2.1.263 (Claude Code))" "PATH-assignment divergence omitted the Firstmate executable identity"
-  assert_contains "$out" "launch pane resolved '$assigned_bin/claude' (2.1.127 (Claude Code))" "PATH-assignment divergence omitted the assigned executable identity"
+  expect_code 1 "$status" "raw Claude launch should reject an unsupported executable from its leading PATH assignment"
+  assert_contains "$out" "raw Claude best-effort managed RC-off default preflight failed" "unsupported assigned executable bypassed the version preflight"
   [ ! -s "$LAUNCH_LOG" ] || fail "raw Claude PATH-assignment command reached the launch channel"
-  pass "raw Claude preflight honors leading PATH assignments"
+  pass "raw Claude preflight rejects unsupported leading PATH executables"
+}
+
+test_raw_claude_supported_path_assignment_ignores_ambient_executable() {
+  local rec id out status raw assigned_bin launch
+  id="profile-raw-claude-supported-path-assignment-${RANDOM}"
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  assigned_bin="$CASE_DIR/assigned-bin"
+  mkdir -p "$assigned_bin"
+  cat > "$assigned_bin/claude" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+  printf '%s\n' '2.1.263 (Claude Code)'
+fi
+SH
+  cat > "$FAKEBIN_DIR/claude" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+  printf '%s\n' '2.1.127 (Claude Code)'
+fi
+SH
+  chmod +x "$assigned_bin/claude" "$FAKEBIN_DIR/claude"
+  raw="PATH=$assigned_bin:$PATH claude --remote-control"
+
+  out=$(FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+  status=$?
+  expect_code 0 "$status" "supported assigned Claude should launch despite an unsupported ambient Claude: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$raw" "supported PATH-assigned raw Claude command bytes changed"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
+  pass "raw Claude initial preflight resolves its supported assigned PATH"
 }
 
 test_quoted_leading_assignment_refuses_raw_launch() {
@@ -1360,6 +1390,7 @@ test_managed_default_allows_raw_claude_forms_unchanged
 test_raw_claude_refuses_backend_executable_divergence
 test_raw_claude_identical_backend_executable_launches_unchanged
 test_raw_claude_path_assignment_uses_assigned_executable
+test_raw_claude_supported_path_assignment_ignores_ambient_executable
 test_quoted_leading_assignment_refuses_raw_launch
 test_unquoted_leading_assignment_keeps_raw_claude_unchanged
 test_claude_spawn_enforces_inline_rc_off_without_managed_policy

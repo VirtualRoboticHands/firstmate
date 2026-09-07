@@ -28,7 +28,7 @@ An auto-detected Herdr spawn prints an opt-out notice.
 
 Spawn stops before creating a Herdr container or acquiring a task worktree when `herdr`, `jq`, or the protocol floor is unavailable.
 Herdr itself requires no separate first-run provisioning.
-Claude workers still require the one-time machine policy setup owned by [`configuration.md`](configuration.md#claude-remote-control-best-effort-default).
+Only identified raw Claude commands require the optional one-time machine policy setup owned by [`configuration.md`](configuration.md#claude-remote-control-best-effort-default); managed-harness Claude workers use the inline RC-off setting.
 
 The required CI lane uses the pinned installers in `bin/fm-install-herdr.sh` and `bin/fm-install-treehouse.sh`.
 Those script headers own release assets, checksums, download bounds, and post-install gates.

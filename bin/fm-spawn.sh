@@ -1646,9 +1646,11 @@ if [ "$HARNESS" = claude ]; then
           ;;
       esac
     fi
-    CLAUDE_EXECUTABLE=$(command -v -- "$RAW_HARNESS_EXECUTABLE" 2>/dev/null || true)
+    CLAUDE_RESOLUTION_PATH=$PATH
+    [ "$RAW_HARNESS_PATH_SET" -eq 0 ] || CLAUDE_RESOLUTION_PATH=$RAW_HARNESS_PATH
+    CLAUDE_EXECUTABLE=$(PATH="$CLAUDE_RESOLUTION_PATH" command -v -- "$RAW_HARNESS_EXECUTABLE" 2>/dev/null || true)
     [ -n "$CLAUDE_EXECUTABLE" ] && [ -x "$CLAUDE_EXECUTABLE" ] || {
-      echo "error: raw Claude executable '$RAW_HARNESS_EXECUTABLE' not found on Firstmate's PATH" >&2
+      echo "error: raw Claude executable '$RAW_HARNESS_EXECUTABLE' not found on the raw launch PATH" >&2
       exit 1
     }
     case "$CLAUDE_EXECUTABLE" in
@@ -1661,11 +1663,15 @@ if [ "$HARNESS" = claude ]; then
         CLAUDE_EXECUTABLE="$CLAUDE_EXECUTABLE_DIR/$(basename "$CLAUDE_EXECUTABLE")"
         ;;
     esac
-    CLAUDE_VERSION=$("$CLAUDE_EXECUTABLE" --version 2>&1 || true)
+    CLAUDE_VERSION=$(PATH="$CLAUDE_RESOLUTION_PATH" "$CLAUDE_EXECUTABLE" --version 2>&1 || true)
   fi
   CLAUDE_PREFLIGHT=check-version
   [ "$RAW_LAUNCH" -eq 0 ] || CLAUDE_PREFLIGHT=check-default
-  "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null || {
+  if [ "$RAW_LAUNCH" -eq 1 ]; then
+    PATH="$CLAUDE_RESOLUTION_PATH" "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null
+  else
+    "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null
+  fi || {
     if [ "$RAW_LAUNCH" -eq 1 ]; then
       echo "error: raw Claude best-effort managed RC-off default preflight failed; refusing launch. Use the managed Claude harness or run '$FM_ROOT/bin/fm-claude-rc-off.sh install-policy' with system privileges." >&2
     else
