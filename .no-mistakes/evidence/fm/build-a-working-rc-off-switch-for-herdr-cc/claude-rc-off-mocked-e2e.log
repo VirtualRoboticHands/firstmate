@@ -1,0 +1,5 @@
+ok - version preflight is clone-and-run while managed-default checks fail closed
+ok - managed default installation is semantic and explicitly best-effort
+ok - version preflight rejects unsupported Claude versions without requiring policy setup
+ok - preflight stays honest when a later managed fragment can override it
+ok - managed default preflight rejects invalid and unsafe fragments
