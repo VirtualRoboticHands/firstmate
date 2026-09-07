@@ -645,6 +645,51 @@ SH
   pass "relative raw PATH refuses launch-pane identity divergence"
 }
 
+test_raw_claude_probe_is_shell_portable_and_state_isolated() {
+  local pane_shell outcome rec id out status raw state_log pane_path expected_state launch available
+  available=0
+  for pane_shell in /bin/sh /bin/bash /bin/zsh; do
+    [ -x "$pane_shell" ] || continue
+    available=$((available + 1))
+    for outcome in success failure; do
+      id="profile-raw-claude-probe-$(basename "$pane_shell")-$outcome-${RANDOM}"
+      rec=$(make_spawn_case "$id" claude "$id")
+      read_case_record "$rec"
+      if [ "$outcome" = failure ]; then
+        cat > "$FAKEBIN_DIR/claude" <<'SH'
+#!/bin/sh
+if [ "${1:-}" = --version ]; then
+  [ "${FM_FAKE_PANE_CONTEXT:-0}" != 1 ] || exit 9
+  printf '%s\n' '2.1.263 (Claude Code)'
+fi
+SH
+        chmod +x "$FAKEBIN_DIR/claude"
+      fi
+      raw='claude --remote-control'
+      state_log="$CASE_DIR/probe-parent-state"
+      pane_path="$FAKEBIN_DIR:$PATH"
+      out=$(FM_TEST_PANE_EXEC_PATH="$pane_path" FM_FAKE_PANE_EXEC_SHELL="$pane_shell" \
+        FM_FAKE_PANE_STATE_LOG="$state_log" \
+        run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+      status=$?
+      expected_state=$(printf '%s\n%s\n%s\n%s' "$pane_path" parent-resolved parent-version 41)
+      [ -f "$state_log" ] || fail "$pane_shell $outcome probe did not write its ready-state observation"
+      [ "$(cat "$state_log")" = "$expected_state" ] || fail "$pane_shell $outcome probe mutated its parent shell state"
+      if [ "$outcome" = success ]; then
+        expect_code 0 "$status" "$pane_shell raw Claude probe should succeed: $out"
+        launch=$(cat "$LAUNCH_LOG")
+        assert_contains "$launch" "$raw" "$pane_shell raw Claude probe changed launch bytes"
+      else
+        expect_code 1 "$status" "$pane_shell raw Claude probe should report version-command failure"
+        assert_contains "$out" "raw Claude launch-pane preflight failed" "$pane_shell probe failure was not reported"
+        [ ! -s "$LAUNCH_LOG" ] || fail "$pane_shell failed probe reached the launch channel"
+      fi
+    done
+  done
+  [ "$available" -gt 0 ] || fail "no supported pane shell fixture is available"
+  pass "raw Claude probe is portable and state-isolated across available pane shells"
+}
+
 test_quoted_leading_assignment_refuses_raw_launch() {
   local rec id out status raw
   id="profile-raw-claude-quoted-assignment-${RANDOM}"
@@ -1491,6 +1536,7 @@ test_raw_claude_relative_executable_resolves_from_launch_worktree
 test_raw_claude_relative_path_component_resolves_from_launch_worktree
 test_raw_claude_empty_path_component_resolves_from_launch_worktree
 test_raw_claude_relative_path_refuses_pane_identity_divergence
+test_raw_claude_probe_is_shell_portable_and_state_isolated
 test_quoted_leading_assignment_refuses_raw_launch
 test_unquoted_leading_assignment_keeps_raw_claude_unchanged
 test_claude_spawn_enforces_inline_rc_off_without_managed_policy

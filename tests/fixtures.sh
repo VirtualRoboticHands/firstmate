@@ -137,7 +137,16 @@ case "${1:-}" in
     fi
     if [ "$literal" -eq 0 ] && [ -n "${FM_FAKE_PANE_EXEC_PATH:-}" ]; then
       case "$payload" in
-        *FM_RAW_CLAUDE_PROBE=1*) (cd "${FM_FAKE_PANE_EXEC_CWD:-$PWD}" && PATH="$FM_FAKE_PANE_EXEC_PATH" /bin/sh -c "$payload") ;;
+        *FM_RAW_CLAUDE_PROBE=1*)
+          pane_shell=${FM_FAKE_PANE_EXEC_SHELL:-/bin/sh}
+          if [ -n "${FM_FAKE_PANE_STATE_LOG:-}" ]; then
+            (cd "${FM_FAKE_PANE_EXEC_CWD:-$PWD}" && \
+              PATH="$FM_FAKE_PANE_EXEC_PATH" FM_FAKE_PANE_PAYLOAD="$payload" FM_FAKE_PANE_CONTEXT=1 \
+              "$pane_shell" -c 'fm_raw_claude_resolved=parent-resolved; fm_raw_claude_version=parent-version; fm_raw_claude_exit_code=41; fm_raw_claude_parent_path=$PATH; eval "$FM_FAKE_PANE_PAYLOAD"; printf "%s\n%s\n%s\n%s\n" "$PATH" "$fm_raw_claude_resolved" "$fm_raw_claude_version" "$fm_raw_claude_exit_code" > "$FM_FAKE_PANE_STATE_LOG"; [ "$PATH" = "$fm_raw_claude_parent_path" ]')
+          else
+            (cd "${FM_FAKE_PANE_EXEC_CWD:-$PWD}" && PATH="$FM_FAKE_PANE_EXEC_PATH" FM_FAKE_PANE_CONTEXT=1 "$pane_shell" -c "$payload")
+          fi
+          ;;
       esac
     fi
     exit 0
