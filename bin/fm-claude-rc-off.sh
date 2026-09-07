@@ -3,6 +3,7 @@
 # Usage: fm-claude-rc-off.sh install-policy
 #        fm-claude-rc-off.sh check-version [claude-executable]
 #        fm-claude-rc-off.sh check-default [claude-executable]
+#        fm-claude-rc-off.sh check-default-version claude-executable version
 # The check confirms a supported Claude version and Firstmate's managed fragment.
 # It cannot prove the effective value after later drop-ins or higher managed tiers.
 # Tests may redirect the managed directory only under FM_SPAWN_NO_GUARD=1.
@@ -29,9 +30,8 @@ policy_path() {
   printf '%s/50-firstmate-remote-control.json\n' "$(managed_dir)"
 }
 
-check_version() {
-  local executable=$1 version major minor patch
-  version=$("$executable" --version) || die "cannot read Claude version from $executable"
+check_version_value() {
+  local executable=$1 version=$2 major minor patch
   [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)[[:space:]]+\(Claude\ Code\)$ ]] \
     || die "unrecognized Claude version from $executable: $version"
   major=${BASH_REMATCH[1]}
@@ -39,6 +39,12 @@ check_version() {
   patch=${BASH_REMATCH[3]}
   (( major > 2 || (major == 2 && (minor > 1 || (minor == 1 && patch >= 128))) )) \
     || die "Claude $version does not honor disableRemoteControl"
+}
+
+check_version() {
+  local executable=$1 version
+  version=$("$executable" --version) || die "cannot read Claude version from $executable"
+  check_version_value "$executable" "$version"
 }
 
 check_policy_fragment() {
@@ -67,6 +73,14 @@ check_default() {
   printf 'Claude best-effort managed RC-off default present; effective state unverified: %s\n' "$target"
 }
 
+check_default_version() {
+  [ "$#" -eq 2 ] || die 'check-default-version requires a Claude executable and observed version'
+  local executable=$1 version=$2 target
+  check_version_value "$executable" "$version"
+  target=$(check_policy_fragment)
+  printf 'Claude best-effort managed RC-off default present; effective state unverified: %s\n' "$target"
+}
+
 install_policy() {
   local dir target tmp
   dir=$(managed_dir)
@@ -86,6 +100,7 @@ case "${1:-}" in
   install-policy) [ "$#" -eq 1 ] || die 'install-policy takes no arguments'; install_policy ;;
   check-version) shift; [ "$#" -le 1 ] || die 'check-version accepts at most one Claude executable'; check_version "${1:-claude}" ;;
   check-default) shift; check_default "$@" ;;
+  check-default-version) shift; check_default_version "$@" ;;
   --help|-h|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

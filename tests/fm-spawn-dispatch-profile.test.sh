@@ -525,7 +525,7 @@ test_raw_claude_supported_path_assignment_ignores_ambient_executable() {
   assigned_bin="$CASE_DIR/assigned-bin"
   mkdir -p "$assigned_bin"
   cat > "$assigned_bin/claude" <<'SH'
-#!/usr/bin/env bash
+#!/bin/sh
 if [ "${1:-}" = --version ]; then
   printf '%s\n' '2.1.263 (Claude Code)'
 fi
@@ -537,7 +537,7 @@ if [ "${1:-}" = --version ]; then
 fi
 SH
   chmod +x "$assigned_bin/claude" "$FAKEBIN_DIR/claude"
-  raw="PATH=$assigned_bin:$PATH claude --remote-control"
+  raw="PATH=$assigned_bin claude --remote-control"
 
   out=$(FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
     run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
@@ -547,6 +547,32 @@ SH
   assert_contains "$launch" "$raw" "supported PATH-assigned raw Claude command bytes changed"
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
   pass "raw Claude initial preflight resolves its supported assigned PATH"
+}
+
+test_raw_claude_relative_executable_resolves_from_launch_worktree() {
+  local rec id out status raw launch
+  id="profile-raw-claude-relative-${RANDOM}"
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  cat > "$PROJ_DIR/claude" <<'SH'
+#!/bin/sh
+if [ "${1:-}" = --version ]; then
+  printf '%s\n' '2.1.263 (Claude Code)'
+fi
+SH
+  chmod +x "$PROJ_DIR/claude"
+  git -C "$PROJ_DIR" add claude
+  git -C "$PROJ_DIR" commit -m 'add relative Claude fixture' >/dev/null
+  git -C "$PROJ_DIR" push --quiet origin HEAD
+  raw='./claude --remote-control'
+
+  out=$(FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+  status=$?
+  expect_code 0 "$status" "relative raw Claude should resolve from the launch worktree: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$raw" "relative raw Claude command bytes changed"
+  pass "relative raw Claude identity is bound to the launch worktree"
 }
 
 test_quoted_leading_assignment_refuses_raw_launch() {
@@ -1391,6 +1417,7 @@ test_raw_claude_refuses_backend_executable_divergence
 test_raw_claude_identical_backend_executable_launches_unchanged
 test_raw_claude_path_assignment_uses_assigned_executable
 test_raw_claude_supported_path_assignment_ignores_ambient_executable
+test_raw_claude_relative_executable_resolves_from_launch_worktree
 test_quoted_leading_assignment_refuses_raw_launch
 test_unquoted_leading_assignment_keeps_raw_claude_unchanged
 test_claude_spawn_enforces_inline_rc_off_without_managed_policy

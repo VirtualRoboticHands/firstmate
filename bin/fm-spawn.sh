@@ -1648,27 +1648,36 @@ if [ "$HARNESS" = claude ]; then
     fi
     CLAUDE_RESOLUTION_PATH=$PATH
     [ "$RAW_HARNESS_PATH_SET" -eq 0 ] || CLAUDE_RESOLUTION_PATH=$RAW_HARNESS_PATH
-    CLAUDE_EXECUTABLE=$(PATH="$CLAUDE_RESOLUTION_PATH" command -v -- "$RAW_HARNESS_EXECUTABLE" 2>/dev/null || true)
-    [ -n "$CLAUDE_EXECUTABLE" ] && [ -x "$CLAUDE_EXECUTABLE" ] || {
-      echo "error: raw Claude executable '$RAW_HARNESS_EXECUTABLE' not found on the raw launch PATH" >&2
-      exit 1
-    }
-    case "$CLAUDE_EXECUTABLE" in
+    CLAUDE_RESOLUTION_DEFERRED=0
+    case "$RAW_HARNESS_EXECUTABLE" in
       /*) ;;
-      *)
-        CLAUDE_EXECUTABLE_DIR=$(cd "$(dirname "$CLAUDE_EXECUTABLE")" 2>/dev/null && pwd -P) || {
-          echo "error: could not resolve raw Claude executable '$CLAUDE_EXECUTABLE' to an absolute path" >&2
-          exit 1
-        }
-        CLAUDE_EXECUTABLE="$CLAUDE_EXECUTABLE_DIR/$(basename "$CLAUDE_EXECUTABLE")"
-        ;;
+      */*) CLAUDE_RESOLUTION_DEFERRED=1 ;;
     esac
-    CLAUDE_VERSION=$(PATH="$CLAUDE_RESOLUTION_PATH" "$CLAUDE_EXECUTABLE" --version 2>&1 || true)
+    if [ "$CLAUDE_RESOLUTION_DEFERRED" -eq 0 ]; then
+      CLAUDE_EXECUTABLE=$(PATH="$CLAUDE_RESOLUTION_PATH" command -v -- "$RAW_HARNESS_EXECUTABLE" 2>/dev/null || true)
+      [ -n "$CLAUDE_EXECUTABLE" ] && [ -x "$CLAUDE_EXECUTABLE" ] || {
+        echo "error: raw Claude executable '$RAW_HARNESS_EXECUTABLE' not found on the raw launch PATH" >&2
+        exit 1
+      }
+      case "$CLAUDE_EXECUTABLE" in
+        /*) ;;
+        *)
+          CLAUDE_EXECUTABLE_DIR=$(cd "$(dirname "$CLAUDE_EXECUTABLE")" 2>/dev/null && pwd -P) || {
+            echo "error: could not resolve raw Claude executable '$CLAUDE_EXECUTABLE' to an absolute path" >&2
+            exit 1
+          }
+          CLAUDE_EXECUTABLE="$CLAUDE_EXECUTABLE_DIR/$(basename "$CLAUDE_EXECUTABLE")"
+          ;;
+      esac
+      CLAUDE_VERSION=$(PATH="$CLAUDE_RESOLUTION_PATH" "$CLAUDE_EXECUTABLE" --version 2>&1 || true)
+    fi
   fi
   CLAUDE_PREFLIGHT=check-version
   [ "$RAW_LAUNCH" -eq 0 ] || CLAUDE_PREFLIGHT=check-default
-  if [ "$RAW_LAUNCH" -eq 1 ]; then
-    PATH="$CLAUDE_RESOLUTION_PATH" "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null
+  if [ "$RAW_LAUNCH" -eq 1 ] && [ "$CLAUDE_RESOLUTION_DEFERRED" -eq 0 ]; then
+    "$FM_ROOT/bin/fm-claude-rc-off.sh" check-default-version "$CLAUDE_EXECUTABLE" "$CLAUDE_VERSION" >/dev/null
+  elif [ "$RAW_LAUNCH" -eq 1 ]; then
+    :
   else
     "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null
   fi || {
@@ -3918,6 +3927,29 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
   LAUNCH="$LAUNCH_ENV_PREFIX /bin/sh -c $(shell_quote "$LAUNCH")"
 fi
 if [ "$HARNESS" = claude ] && [ "$RAW_LAUNCH" -eq 1 ]; then
+  if [ "$CLAUDE_RESOLUTION_DEFERRED" -eq 1 ]; then
+    CLAUDE_EXECUTABLE=$(
+      cd "$WT" 2>/dev/null || exit 1
+      resolved=$(PATH="$CLAUDE_RESOLUTION_PATH" command -v -- "$RAW_HARNESS_EXECUTABLE" 2>/dev/null || true)
+      [ -n "$resolved" ] || exit 1
+      case "$resolved" in
+        /*) printf '%s\n' "$resolved" ;;
+        *)
+          resolved_dir=$(cd "$(dirname "$resolved")" 2>/dev/null && pwd -P) || exit 1
+          printf '%s/%s\n' "$resolved_dir" "$(basename "$resolved")"
+          ;;
+      esac
+    ) || true
+    [ -n "$CLAUDE_EXECUTABLE" ] && [ -x "$CLAUDE_EXECUTABLE" ] || {
+      echo "error: raw Claude executable '$RAW_HARNESS_EXECUTABLE' not found from launch worktree '$WT'" >&2
+      exit 1
+    }
+    CLAUDE_VERSION=$(cd "$WT" && PATH="$CLAUDE_RESOLUTION_PATH" "$CLAUDE_EXECUTABLE" --version 2>&1 || true)
+    "$FM_ROOT/bin/fm-claude-rc-off.sh" check-default-version "$CLAUDE_EXECUTABLE" "$CLAUDE_VERSION" >/dev/null || {
+      echo "error: raw Claude best-effort managed RC-off default preflight failed; refusing launch. Use the managed Claude harness or run '$FM_ROOT/bin/fm-claude-rc-off.sh install-policy' with system privileges." >&2
+      exit 1
+    }
+  fi
   CLAUDE_PROBE_BASE="$TASK_TMP/raw-claude-probe"
   CLAUDE_PROBE_PATH="$CLAUDE_PROBE_BASE.path"
   CLAUDE_PROBE_VERSION="$CLAUDE_PROBE_BASE.version"
@@ -3928,7 +3960,7 @@ if [ "$HARNESS" = claude ] && [ "$RAW_LAUNCH" -eq 1 ]; then
   if [ "$RAW_HARNESS_PATH_SET" -eq 1 ]; then
     CLAUDE_PROBE_PATH_SETUP="PATH=$(shell_quote "$RAW_HARNESS_PATH"); export PATH; "
   fi
-  CLAUDE_PROBE_INNER="FM_RAW_CLAUDE_PROBE=1; $CLAUDE_PROBE_PATH_SETUP resolved=\$(command -v -- $(shell_quote "$RAW_HARNESS_EXECUTABLE") 2>/dev/null || true); version=; status=127; if [ -n \"\$resolved\" ]; then version=\$(\"\$resolved\" --version 2>&1 || true); status=0; $(shell_quote "$FM_ROOT/bin/fm-claude-rc-off.sh") check-default \"\$resolved\" >/dev/null 2>&1 || status=\$?; fi; printf '%s' \"\$resolved\" > $(shell_quote "$CLAUDE_PROBE_PATH"); printf '%s' \"\$version\" > $(shell_quote "$CLAUDE_PROBE_VERSION"); printf '%s' \"\$status\" > $(shell_quote "$CLAUDE_PROBE_STATUS"); : > $(shell_quote "$CLAUDE_PROBE_READY")"
+  CLAUDE_PROBE_INNER="FM_RAW_CLAUDE_PROBE=1; $CLAUDE_PROBE_PATH_SETUP resolved=\$(command -v -- $(shell_quote "$RAW_HARNESS_EXECUTABLE") 2>/dev/null || true); version=; status=127; if [ -n \"\$resolved\" ]; then case \"\$resolved\" in /*) ;; */*) resolved_base=\${resolved##*/}; resolved_dir=\${resolved%/*}; resolved_dir=\$(cd \"\${resolved_dir:-.}\" 2>/dev/null && pwd -P) && resolved=\"\$resolved_dir/\$resolved_base\" || resolved= ;; *) resolved=\"\$(pwd -P)/\$resolved\" ;; esac; fi; if [ -n \"\$resolved\" ]; then version=\$(\"\$resolved\" --version 2>&1); status=\$?; fi; printf '%s' \"\$resolved\" > $(shell_quote "$CLAUDE_PROBE_PATH"); printf '%s' \"\$version\" > $(shell_quote "$CLAUDE_PROBE_VERSION"); printf '%s' \"\$status\" > $(shell_quote "$CLAUDE_PROBE_STATUS"); : > $(shell_quote "$CLAUDE_PROBE_READY")"
   CLAUDE_PROBE_COMMAND=$CLAUDE_PROBE_INNER
   if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
     CLAUDE_PROBE_COMMAND="$LAUNCH_ENV_PREFIX /bin/sh -c $(shell_quote "$CLAUDE_PROBE_INNER")"
@@ -3959,6 +3991,10 @@ if [ "$HARNESS" = claude ] && [ "$RAW_LAUNCH" -eq 1 ]; then
     echo "error: raw Claude launch-pane preflight failed for '$CLAUDE_PANE_EXECUTABLE' (${CLAUDE_PANE_VERSION:-version unavailable}); refusing launch" >&2
     exit 1
   fi
+  "$FM_ROOT/bin/fm-claude-rc-off.sh" check-default-version "$CLAUDE_PANE_EXECUTABLE" "$CLAUDE_PANE_VERSION" >/dev/null || {
+    echo "error: raw Claude launch-pane preflight failed for '$CLAUDE_PANE_EXECUTABLE' (${CLAUDE_PANE_VERSION:-version unavailable}); refusing launch" >&2
+    exit 1
+  }
 fi
 sleep 0.3
 spawn_send_literal "$T" "$LAUNCH"

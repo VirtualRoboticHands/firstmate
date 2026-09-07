@@ -137,7 +137,7 @@ case "${1:-}" in
     fi
     if [ "$literal" -eq 0 ] && [ -n "${FM_FAKE_PANE_EXEC_PATH:-}" ]; then
       case "$payload" in
-        *FM_RAW_CLAUDE_PROBE=1*) PATH="$FM_FAKE_PANE_EXEC_PATH" /bin/sh -c "$payload" ;;
+        *FM_RAW_CLAUDE_PROBE=1*) (cd "${FM_FAKE_PANE_EXEC_CWD:-$PWD}" && PATH="$FM_FAKE_PANE_EXEC_PATH" /bin/sh -c "$payload") ;;
       esac
     fi
     exit 0
@@ -336,6 +336,7 @@ fm_test_run_spawn() {
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_TEST_CLAUDE_MANAGED_SETTINGS_DIR="$managed_settings_dir" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$pane" TMUX="${TMUX:-fake,1,0}" \
+    FM_FAKE_PANE_EXEC_CWD="${FM_TEST_PANE_EXEC_CWD:-$pane}" \
     PATH="$fakebin:$PATH" \
     "$ROOT/bin/fm-spawn.sh" "$@" 2>&1
 }
