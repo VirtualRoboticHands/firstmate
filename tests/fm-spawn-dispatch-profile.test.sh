@@ -113,6 +113,17 @@ $1
 EOF
 }
 
+install_project_claude_fixture() {
+  local project=$1 relative=$2 version=$3 target
+  target="$project/$relative"
+  mkdir -p "$(dirname "$target")"
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then\n  printf '\''%%s\\n'\'' '\''%s (Claude Code)'\''\nfi\n' "$version" > "$target"
+  chmod +x "$target"
+  git -C "$project" add "$relative"
+  git -C "$project" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm 'add Claude fixture'
+  git -C "$project" push --quiet origin HEAD
+}
+
 assert_meta_profile() {
   local meta=$1 harness=$2 model=$3 effort=$4
   assert_grep "harness=$harness" "$meta" "meta missing harness=$harness"
@@ -546,33 +557,92 @@ SH
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "$raw" "supported PATH-assigned raw Claude command bytes changed"
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
-  pass "raw Claude initial preflight resolves its supported assigned PATH"
+  pass "raw Claude launch-root preflight resolves its supported assigned PATH"
 }
 
 test_raw_claude_relative_executable_resolves_from_launch_worktree() {
-  local rec id out status raw launch
+  local rec id out status raw launch caller_dir
   id="profile-raw-claude-relative-${RANDOM}"
   rec=$(make_spawn_case "$id" claude "$id")
   read_case_record "$rec"
-  cat > "$PROJ_DIR/claude" <<'SH'
-#!/bin/sh
-if [ "${1:-}" = --version ]; then
-  printf '%s\n' '2.1.263 (Claude Code)'
-fi
-SH
-  chmod +x "$PROJ_DIR/claude"
-  git -C "$PROJ_DIR" add claude
-  git -C "$PROJ_DIR" commit -m 'add relative Claude fixture' >/dev/null
-  git -C "$PROJ_DIR" push --quiet origin HEAD
+  install_project_claude_fixture "$PROJ_DIR" claude 2.1.263
+  caller_dir="$CASE_DIR/caller"
+  mkdir -p "$caller_dir"
   raw='./claude --remote-control'
 
-  out=$(FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
+  out=$(cd "$caller_dir" && FM_TEST_PANE_EXEC_PATH="$FAKEBIN_DIR:$PATH" \
     run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
   status=$?
   expect_code 0 "$status" "relative raw Claude should resolve from the launch worktree: $out"
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "$raw" "relative raw Claude command bytes changed"
   pass "relative raw Claude identity is bound to the launch worktree"
+}
+
+test_raw_claude_relative_path_component_resolves_from_launch_worktree() {
+  local rec id out status raw launch caller_dir
+  id="profile-raw-claude-relative-path-${RANDOM}"
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  install_project_claude_fixture "$PROJ_DIR" bin/claude 2.1.263
+  caller_dir="$CASE_DIR/caller"
+  mkdir -p "$caller_dir"
+  raw='PATH=bin claude --remote-control'
+
+  out=$(cd "$caller_dir" && run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+  status=$?
+  expect_code 0 "$status" "relative raw PATH should resolve from the launch worktree: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$raw" "relative-PATH raw Claude command bytes changed"
+  pass "relative raw PATH identity is bound to the launch worktree"
+}
+
+test_raw_claude_empty_path_component_resolves_from_launch_worktree() {
+  local rec id out status raw launch caller_dir
+  id="profile-raw-claude-empty-path-${RANDOM}"
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  install_project_claude_fixture "$PROJ_DIR" claude 2.1.263
+  caller_dir="$CASE_DIR/caller"
+  mkdir -p "$caller_dir"
+  raw='PATH=: claude --remote-control'
+
+  out=$(cd "$caller_dir" && run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+  status=$?
+  expect_code 0 "$status" "empty raw PATH component should resolve from the launch worktree: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "$raw" "empty-PATH raw Claude command bytes changed"
+  pass "empty raw PATH identity is bound to the launch worktree"
+}
+
+test_raw_claude_relative_path_refuses_pane_identity_divergence() {
+  local rec id out status raw backend_dir caller_dir expected_firstmate expected_pane
+  id="profile-raw-claude-relative-path-divergence-${RANDOM}"
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  install_project_claude_fixture "$PROJ_DIR" bin/claude 2.1.263
+  backend_dir="$CASE_DIR/backend"
+  caller_dir="$CASE_DIR/caller"
+  mkdir -p "$backend_dir/bin" "$caller_dir"
+  cat > "$backend_dir/bin/claude" <<'SH'
+#!/bin/sh
+if [ "${1:-}" = --version ]; then
+  printf '%s\n' '2.1.127 (Claude Code)'
+fi
+SH
+  chmod +x "$backend_dir/bin/claude"
+  raw='PATH=bin claude --remote-control'
+  expected_firstmate="$WT_DIR/bin/claude"
+  expected_pane="$backend_dir/bin/claude"
+
+  out=$(cd "$caller_dir" && FM_TEST_PANE_EXEC_CWD="$backend_dir" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" "$raw")
+  status=$?
+  expect_code 1 "$status" "relative raw PATH should refuse a changed pane identity"
+  assert_contains "$out" "Firstmate resolved '$expected_firstmate' (2.1.263 (Claude Code))" "relative-PATH divergence omitted the launch-root identity"
+  assert_contains "$out" "launch pane resolved '$expected_pane' (2.1.127 (Claude Code))" "relative-PATH divergence omitted the pane identity"
+  [ ! -s "$LAUNCH_LOG" ] || fail "divergent relative-PATH raw Claude reached the launch channel"
+  pass "relative raw PATH refuses launch-pane identity divergence"
 }
 
 test_quoted_leading_assignment_refuses_raw_launch() {
@@ -1418,6 +1488,9 @@ test_raw_claude_identical_backend_executable_launches_unchanged
 test_raw_claude_path_assignment_uses_assigned_executable
 test_raw_claude_supported_path_assignment_ignores_ambient_executable
 test_raw_claude_relative_executable_resolves_from_launch_worktree
+test_raw_claude_relative_path_component_resolves_from_launch_worktree
+test_raw_claude_empty_path_component_resolves_from_launch_worktree
+test_raw_claude_relative_path_refuses_pane_identity_divergence
 test_quoted_leading_assignment_refuses_raw_launch
 test_unquoted_leading_assignment_keeps_raw_claude_unchanged
 test_claude_spawn_enforces_inline_rc_off_without_managed_policy
