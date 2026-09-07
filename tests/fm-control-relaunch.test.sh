@@ -253,6 +253,25 @@ SH
   chmod +x "$1/fakebin/mv"
 }
 
+make_claude_preflight_barrier_stub() {  # <case-dir>
+  cat > "$1/fakebin/claude" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --version ]; then
+  : > "$FM_FAKE_CLAUDE_PREFLIGHT_READY"
+  while [ ! -e "$FM_FAKE_CLAUDE_PREFLIGHT_RELEASE" ]; do /bin/sleep 0.01; done
+  printf '%s\n' '2.1.263 (Claude Code)'
+fi
+SH
+  chmod +x "$1/fakebin/claude"
+}
+
+wait_for_file_while_process_runs() {  # <file> <pid>
+  while [ ! -e "$1" ]; do
+    kill -0 "$2" 2>/dev/null || return 1
+    /bin/sleep 0.01
+  done
+}
+
 make_rm_failure_stub() {  # <case-dir>
   cat > "$1/fakebin/rm" <<'SH'
 #!/usr/bin/env bash
@@ -388,30 +407,35 @@ test_relaunch_preserves_durable_task_metadata() {
 }
 
 test_relaunch_serializes_concurrent_durable_metadata_publication() {
-  local dir control_pid link_pid rc i=0 traceparent prepare launch_release waiting ready release
+  local dir control_pid link_pid rc i=0 traceparent preflight_ready preflight_release prepare launch_release waiting ready release
   dir=$(new_case metadata-race rl28)
   add_ship_task "$dir" rl28 claude
   printf '%s\n' "$$" > "$dir/home/state/.lock"
   printf '%s on\n' "$$" > "$dir/home/state/.trace-context-effective"
   make_mv_failure_stub "$dir"
+  make_claude_preflight_barrier_stub "$dir"
+  preflight_ready="$dir/claude-preflight-ready"
+  preflight_release="$dir/claude-preflight-release"
   prepare="$dir/trace-prepare"
   launch_release="$dir/trace-release"
   waiting="$dir/meta-writer-waiting"
   ready="$dir/meta-writer-ready"
   release="$dir/meta-writer-release"
   FM_REAL_MV=$(command -v mv) \
+    FM_FAKE_CLAUDE_PREFLIGHT_READY="$preflight_ready" \
+    FM_FAKE_CLAUDE_PREFLIGHT_RELEASE="$preflight_release" \
     FM_FAKE_TRACE_PREPARE="$prepare" \
     FM_FAKE_TRACE_RELEASE="$launch_release" \
     run_control "$dir" rl28 relaunch --note "continue after publication" > "$dir/control.out" &
   control_pid=$!
-  while [ ! -e "$prepare" ] && [ "$i" -lt 200 ]; do
-    /bin/sleep 0.01
-    i=$((i + 1))
-  done
-  [ -e "$prepare" ] || {
-    kill "$control_pid" 2>/dev/null || true
+  wait_for_file_while_process_runs "$preflight_ready" "$control_pid" || {
     wait "$control_pid" 2>/dev/null || true
-    fail "relaunch did not reach trace delivery: $(cat "$dir/control.out")"
+    fail "relaunch did not reach Claude preflight: $(cat "$dir/control.out")"
+  }
+  : > "$preflight_release"
+  wait_for_file_while_process_runs "$prepare" "$control_pid" || {
+    wait "$control_pid" 2>/dev/null || true
+    fail "relaunch exited before trace delivery: $(cat "$dir/control.out")"
   }
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_ROOT_OVERRIDE="$ROOT" \
     FM_REAL_MV="$(command -v mv)" \
