@@ -303,18 +303,16 @@ This change does not address that warning and does not claim to.
 `bin/fm-spawn.sh` therefore pre-registers the task worktree through `bin/fm-claude-trust.sh` before launch, and `tests/fm-claude-trust.test.sh` pins both halves of the scope contract: a fresh worktree is trusted, and an out-of-scope path is refused.
 That automated spawn case runs against a fake claude, so it asserts the store entry and the launch command and nothing more; the live arms above are what establish that the entry actually suppresses the dialog.
 
-The shared Treehouse-pool clone boundary was verified on 2026-09-07 against Claude Code 2.1.263 with the real Fable model.
+The shared Treehouse-pool workspace-trust boundary was observed on 2026-09-07 against the real Claude Code 2.1.263 harness.
 The live guard created two clones of one file origin, created the leased linked worktree from the pool-owner clone, registered that path against the secondmate clone, and launched an interactive Fable session from the leased path with an isolated copy of the authenticated Claude store.
-The clones' Git common dirs were asserted different before registration, and the model response appeared without either workspace-trust dialog string.
+The clones' Git common dirs were asserted different, registration succeeded, and Claude passed workspace trust without displaying either workspace-trust dialog string.
+The isolated-profile run then stopped at Auto/RC onboarding or an idle composer and did not execute the interactive verification prompt, so fresh live Fable response evidence remains incomplete.
 
 ```sh
 FM_CLAUDE_TRUST_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-claude-trust-live-e2e.test.sh
 ```
 
-```text
-ok - Claude/Fable (2.1.263 (Claude Code)) accepted a cross-clone shared-pool trust registration and reached the Fable prompt without a workspace-trust dialog
-FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=7463
-```
+The opt-in guard fails nonzero and reports `interactive prompt was not reached within <budget>s` whenever the submitted prompt does not produce the required response marker.
 
 `tests/fm-claude-trust-live-e2e.test.sh` is the refresh command after a Claude or Fable behavior change.
 `tests/fm-claude-trust.test.sh` provides the portable real-Git regression for the same-origin cross-clone success, different-origin refusal, originless cross-clone refusal, same-clone Claude success, Fable spawn routing, and unchanged Codex routing.
