@@ -2141,8 +2141,8 @@ SH
 }
 
 test_config_reread_serializes_concurrent_pushes() {
-  local w head fakebin marker entered log first_out second_out first_pid first_status second_status
-  local first_instr second_instr first_line second_line
+  local w head fakebin marker ready release second_started log first_out second_out
+  local first_pid second_pid first_status second_status first_instr second_instr first_line second_line
   w=$(new_world config-reread-serialized-pushes)
   head=$(git -C "$w/main" rev-parse HEAD)
   add_sm_worktree "$w" sm "$head"
@@ -2153,15 +2153,18 @@ test_config_reread_serializes_concurrent_pushes() {
   fakebin=$(make_fake_toolchain "$w")
   mv "$fakebin/tmux" "$fakebin/tmux.real"
   marker="$w/first-send.marker"
-  entered="$w/first-send.entered"
+  ready="$w/first-send.ready"
+  release="$w/first-send.release"
+  second_started="$w/second-push.started"
+  mkfifo "$ready" "$release" "$second_started"
   log="$w/config-reread-serialized.tmux.log"
   cat > "$fakebin/tmux" <<SH
 #!/usr/bin/env bash
 case "\$*" in
   *send-keys*)
     if (set -o noclobber; : > "$marker") 2>/dev/null; then
-      : > "$entered"
-      sleep 1
+      printf '%s\n' ready > "$ready"
+      IFS= read -r _ < "$release"
     fi
     ;;
 esac
@@ -2176,20 +2179,24 @@ SH
       "$ROOT/bin/fm-config-push.sh" > "$first_out" 2>&1
   ) &
   first_pid=$!
-  for _ in $(seq 1 100); do
-    [ -e "$entered" ] && break
-    sleep 0.02
-  done
-  [ -e "$entered" ] || fail "first config push did not reach pointer delivery"
+  IFS= read -r _ < "$ready"
   first_instr=$(reread_instruction_path "$w/sm") \
     || fail "first concurrent push did not publish its generation"
+  inbox_stream "$w/home/state" sm | grep -Fq "CONFIG_REREAD: $first_instr" \
+    || fail "first config push generation pointer did not reach durable delivery"
   printf 'two\n' > "$w/home/config/crew-harness"
   second_out="$w/second-push.out"
-  PATH="$fakebin:$BASE_PATH" FM_HOME="$w/home" FM_ROOT_OVERRIDE="$w/main" \
-    FM_SEND_SETTLE=0 FM_FAKE_TMUX_LOG="$log" \
-    "$ROOT/bin/fm-config-push.sh" > "$second_out" 2>&1
-  second_status=$?
+  (
+    printf '%s\n' started > "$second_started"
+    PATH="$fakebin:$BASE_PATH" FM_HOME="$w/home" FM_ROOT_OVERRIDE="$w/main" \
+      FM_SEND_SETTLE=0 FM_FAKE_TMUX_LOG="$log" \
+      "$ROOT/bin/fm-config-push.sh" > "$second_out" 2>&1
+  ) &
+  second_pid=$!
+  IFS= read -r _ < "$second_started"
+  printf '%s\n' release > "$release"
   wait "$first_pid"; first_status=$?
+  wait "$second_pid"; second_status=$?
   expect_code 0 "$first_status" "first serialized config push failed"
   expect_code 0 "$second_status" "second serialized config push failed"
   second_instr=$(reread_instruction_path "$w/sm") \
