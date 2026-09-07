@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 # Behavior tests for bin/fm-claude-trust.sh and the claude spawn that calls it.
 #
-# Both halves of the contract are load-bearing and both are proven here: a
-# legitimate fresh task worktree is trusted so a claude worker reaches its
-# brief with no human, and every out-of-scope path is REFUSED rather than
-# warned about or quietly skipped.
+# The named failure modes are each pinned through the executable boundary:
+#
+# - shared-pool clone mismatch: a linked worktree and launching checkout have
+#   different common dirs but the same origin, and Claude/Fable must launch;
+# - unrelated-repository widening: different common dirs and different origins
+#   must still refuse;
+# - originless clone ambiguity: different common dirs with no origins cannot be
+#   proven equivalent and must refuse;
+# - same-clone regression: the original linked-worktree case must still launch;
+# - harness spillover: Codex must keep launching without entering Claude trust.
+#
+# Every other scope and store-integrity refusal remains fail-closed.
 set -u
 
 # shellcheck source=tests/fixtures.sh
@@ -246,9 +254,45 @@ test_foreign_project_worktree_is_refused() {
   fm_git_worktree "$other" "$other_wt" wt-other
   out=$(run_trust "$CONFIG" "$other_wt" "$PROJ")
   expect_code 1 $? "another project's worktree must be refused: $out"
-  assert_contains "$out" "is not a worktree of project" "the refusal did not name the project mismatch"
+  assert_contains "$out" "different logical repository" "the refusal did not name the repository mismatch"
   assert_not_trusted "$CONFIG/.claude.json" "$other_wt" "a foreign project's worktree was trusted"
   pass "fm-claude-trust.sh: refuses a worktree belonging to another project"
+}
+
+test_cross_clone_worktree_with_matching_origin_is_trusted() {
+  local rec launcher out wt_common launcher_common
+  rec=$(make_case cross-clone)
+  read_case "$rec"
+  launcher="$CASE_DIR/launching-project"
+  git clone -q "$(git -C "$PROJ" remote get-url origin)" "$launcher"
+  wt_common=$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)
+  launcher_common=$(git -C "$launcher" rev-parse --path-format=absolute --git-common-dir)
+  [ "$wt_common" != "$launcher_common" ] \
+    || fail "the shared-pool clone-mismatch fixture accidentally shares one common dir"
+
+  out=$(run_trust "$CONFIG" "$WT" "$launcher")
+  expect_code 0 $? "a shared-pool worktree from another clone of the same origin must be trusted: $out"
+  assert_trusted "$CONFIG/.claude.json" "$WT" \
+    "the shared-pool worktree was not recorded in Claude's trust store"
+  pass "fm-claude-trust.sh: accepts a shared-pool worktree from another clone of the same origin"
+}
+
+test_originless_cross_clone_worktree_is_refused() {
+  local rec launcher out
+  rec=$(make_case originless-cross-clone)
+  read_case "$rec"
+  launcher="$CASE_DIR/launching-project"
+  git clone -q "$(git -C "$PROJ" remote get-url origin)" "$launcher"
+  git -C "$WT" remote remove origin
+  git -C "$launcher" remote remove origin
+
+  out=$(run_trust "$CONFIG" "$WT" "$launcher")
+  expect_code 1 $? "different originless clones must be refused when equivalence cannot be proven: $out"
+  assert_contains "$out" "matching origin identity cannot be proven" \
+    "the refusal did not name the originless clone ambiguity"
+  assert_not_trusted "$CONFIG/.claude.json" "$WT" \
+    "an originless cross-clone worktree was trusted without repository identity proof"
+  pass "fm-claude-trust.sh: refuses originless cross-clone ambiguity"
 }
 
 test_worktree_subdirectory_is_refused() {
@@ -440,6 +484,58 @@ test_claude_spawn_pretrusts_its_worktree_and_reaches_the_brief() {
   pass "fm-spawn.sh: a claude spawn pre-trusts its worktree and launches with the brief"
 }
 
+test_fable_spawn_from_secondmate_clone_pretrusts_shared_pool_worktree() {
+  local case_dir home owner proj wt config fakebin launch_log out owner_common proj_common
+  case_dir="$TMP_ROOT/fable-cross-clone-spawn"
+  home="$case_dir/secondmate-home"
+  owner="$case_dir/pool-owner-project"
+  proj="$home/projects/project"
+  wt="$case_dir/shared-pool-worktree"
+  config="$case_dir/claude-config"
+  launch_log="$case_dir/launch.log"
+  mkdir -p "$config"
+  fakebin=$(make_spawn_fakebin "$case_dir/fake" claude)
+  fm_test_spawn_home "$home" claude
+  fm_git_worktree "$owner" "$wt" wt-fable-cross-clone
+  git clone -q "$(git -C "$owner" remote get-url origin)" "$proj"
+  owner_common=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir)
+  proj_common=$(git -C "$proj" rev-parse --path-format=absolute --git-common-dir)
+  [ "$owner_common" != "$proj_common" ] \
+    || fail "the secondmate shared-pool fixture accidentally shares one common dir"
+  fm_test_spawn_brief "$home" fablecrossclone
+
+  out=$(FM_TEST_CLAUDE_CONFIG_DIR="$config" FM_FAKE_LAUNCH_LOG="$launch_log" \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" fablecrossclone "$proj" claude \
+    --model fable --mode no-mistakes --yolo off)
+  expect_code 0 $? "a Fable spawn from a secondmate clone must accept its shared-pool worktree: $out"
+  assert_trusted "$config/.claude.json" "$wt" \
+    "the Fable spawn did not pre-register its cross-clone shared-pool worktree"
+  assert_grep "--model 'fable'" "$launch_log" \
+    "the cross-clone launch did not preserve the requested Fable model"
+  pass "fm-spawn.sh: a Fable spawn from a secondmate clone pre-trusts its shared-pool worktree"
+}
+
+test_codex_cross_clone_spawn_bypasses_claude_trust() {
+  local case_dir home owner proj wt fakebin out
+  case_dir="$TMP_ROOT/codex-cross-clone-spawn"
+  home="$case_dir/secondmate-home"
+  owner="$case_dir/pool-owner-project"
+  proj="$home/projects/project"
+  wt="$case_dir/shared-pool-worktree"
+  fakebin=$(make_spawn_fakebin "$case_dir/fake" codex)
+  fm_test_spawn_home "$home" codex
+  fm_git_worktree "$owner" "$wt" wt-codex-cross-clone
+  git clone -q "$(git -C "$owner" remote get-url origin)" "$proj"
+  fm_test_spawn_brief "$home" codexcrossclone
+
+  out=$(fm_test_run_spawn "$home" "$wt" "$fakebin" codexcrossclone "$proj" codex \
+    --mode no-mistakes --yolo off)
+  expect_code 0 $? "a Codex cross-clone spawn must remain unchanged: $out"
+  [ ! -e "$home/user-home/.claude.json" ] \
+    || fail "the Codex spawn unexpectedly entered Claude's trust-registration path"
+  pass "fm-spawn.sh: Codex cross-clone spawning remains outside Claude trust registration"
+}
+
 test_fresh_worktree_is_trusted
 test_registration_is_idempotent
 test_primary_checkout_is_refused
@@ -451,6 +547,8 @@ test_relative_config_dir_is_refused
 test_non_git_directory_is_refused
 test_missing_directory_is_refused
 test_foreign_project_worktree_is_refused
+test_cross_clone_worktree_with_matching_origin_is_trusted
+test_originless_cross_clone_worktree_is_refused
 test_worktree_subdirectory_is_refused
 test_unrelated_store_content_is_preserved
 test_symlinked_store_to_a_foreign_owned_target_is_refused
@@ -459,4 +557,6 @@ test_corrupt_store_fails_closed
 test_missing_node_is_refused
 test_scope_refusal_stays_fail_closed_without_node
 test_claude_spawn_pretrusts_its_worktree_and_reaches_the_brief
+test_fable_spawn_from_secondmate_clone_pretrusts_shared_pool_worktree
+test_codex_cross_clone_spawn_bypasses_claude_trust
 test_refused_spawn_leaves_no_task_state

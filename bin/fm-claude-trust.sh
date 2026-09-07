@@ -5,7 +5,7 @@
 #
 # Usage: fm-claude-trust.sh <worktree> <project>
 #   <worktree>  the isolated task worktree this spawn launches into
-#   <project>   the primary checkout that worktree belongs to
+#   <project>   the launching home's checkout of the same logical repository
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
@@ -21,12 +21,15 @@
 #
 # THE SCOPE TEST IS THE SAFETY PROPERTY, and it is STRUCTURAL rather than a
 # path policy. <worktree> must be a LINKED git worktree - its own git dir,
-# sharing <project>'s common dir - whose top level is exactly the resolved
-# argument. Git is the ground truth, so the argument is never trusted on its
-# own word: a primary checkout (git dir == common dir), a worktree of an
-# unrelated repo, a subdirectory of a worktree, a plain directory, and a home
-# directory are each refused. Refusal is a non-zero exit, never a warning and
-# never a silent skip.
+# separate from its clone's common dir - whose top level is exactly the resolved
+# argument. The launching checkout may share that common dir or may be another
+# clone with the same non-empty origin identity, which is the normal shape when
+# a secondmate receives a slot from the shared Treehouse pool. Different-clone
+# paths with no provably equal origins are refused. Git is the ground truth, so
+# the argument is never trusted on its own word: a primary checkout (git dir ==
+# common dir), a worktree of an unrelated repo, a subdirectory of a worktree, a
+# plain directory, and a home directory are each refused. Refusal is a non-zero
+# exit, never a warning and never a silent skip.
 #
 # The test is deliberately NOT a treehouse or orca path prefix. Treehouse's
 # root is configurable (--root, TREEHOUSE_ROOT, config, and a relative
@@ -90,6 +93,23 @@ common_dir_of() {
   (cd -P -- "$dir" && real_dir "$common")
 }
 
+# The logical repository identity used when Treehouse leased a worktree from a
+# clone other than the launching home's checkout. Keep this normalization in
+# step with fm_treehouse_project_lock_path in bin/fm-wake-lib.sh: exact network
+# URLs are stable identities, while existing local paths are compared after
+# physical resolution. An absent origin proves nothing across clone boundaries.
+origin_identity_of() {
+  local dir=$1 origin
+  origin=$(git -C "$dir" remote get-url origin 2>/dev/null) || return 1
+  [ -n "$origin" ] || return 1
+  case "$origin" in
+    /*) [ ! -d "$origin" ] || origin=$(real_dir "$origin") || return 1 ;;
+    *://*|*:*) ;;
+    *) [ ! -d "$dir/$origin" ] || origin=$(real_dir "$dir/$origin") || return 1 ;;
+  esac
+  printf '%s\n' "$origin"
+}
+
 WT_REAL=$(real_dir "$WT_ARG") || true
 [ -n "$WT_REAL" ] || refuse "worktree '$WT_ARG' is not an accessible directory"
 PROJ_REAL=$(real_dir "$PROJ_ARG") || true
@@ -139,7 +159,14 @@ WT_COMMON=$(common_dir_of "$WT_REAL") || true
 
 PROJ_COMMON=$(common_dir_of "$PROJ_REAL") || true
 [ -n "$PROJ_COMMON" ] || refuse "project '$PROJ_REAL' is not inside a git repository"
-[ "$WT_COMMON" = "$PROJ_COMMON" ] || refuse "'$WT_REAL' is not a worktree of project '$PROJ_REAL'"
+if [ "$WT_COMMON" != "$PROJ_COMMON" ]; then
+  WT_ORIGIN=$(origin_identity_of "$WT_REAL") || true
+  PROJ_ORIGIN=$(origin_identity_of "$PROJ_REAL") || true
+  [ -n "$WT_ORIGIN" ] && [ -n "$PROJ_ORIGIN" ] \
+    || refuse "'$WT_REAL' belongs to a different clone than project '$PROJ_REAL', and matching origin identity cannot be proven"
+  [ "$WT_ORIGIN" = "$PROJ_ORIGIN" ] \
+    || refuse "'$WT_REAL' belongs to a different logical repository than project '$PROJ_REAL' (origin identities differ)"
+fi
 
 # The store write needs node, and a missing interpreter refuses like every other
 # failure here. Degrading instead would launch a worker straight into the dialog

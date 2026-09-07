@@ -3079,11 +3079,12 @@ fi
 # worktree is known and before any per-task state is created below. The dialog
 # gates the pane before the brief is ever read, and it also gates loading the
 # project settings written further down, so nothing armed below takes effect
-# without it. bin/fm-claude-trust.sh owns the structural scope test and refuses
-# any path that is not this project's own isolated worktree; a refusal blocks the
-# spawn rather than launching a worker that would wedge on a dialog firstmate
-# cannot answer. Refusing here rather than beside the arm keeps this in the same
-# class as the two worktree refusals just above: no temp root, no retired
+# without it. bin/fm-claude-trust.sh owns the structural scope test and accepts a
+# linked worktree from this checkout's clone or from a shared-pool clone with the
+# same origin identity; a refusal blocks the spawn rather than launching a worker
+# that would wedge on a dialog firstmate cannot answer. Refusing here rather than
+# beside the arm keeps this in the same class as the two worktree refusals just
+# above: no temp root, no retired
 # relaunch wiring and no busy record exists yet to strand, so the refusal names
 # the endpoint the same way they do and leaves nothing else behind.
 if [ "$KIND" != secondmate ]; then
