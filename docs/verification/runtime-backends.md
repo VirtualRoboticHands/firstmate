@@ -9,12 +9,12 @@ Exact task chronology, branch names, temporary homes, local paths, process ids, 
 ## Claude Remote Control best-effort default
 
 [`configuration.md`](../configuration.md#claude-remote-control-best-effort-default) owns current setup, launch behavior, limits, and the captain-authorized security boundary.
-The captain authorized that best-effort boundary on 2026-09-06 so normal fleet launches can use the metromotion account with machine-managed RC-off as their effective default.
+The captain authorized that best-effort boundary on 2026-09-06 so normal fleet launches can use the metromotion account with inline RC-off as their effective default.
 
 The opt-in drift observation deliberately requests `--remote-control` while passing `--settings '{"disableRemoteControl":false}'`, then checks whether both Remote Control commands remain unavailable after a completed turn.
 Its result describes only that concrete Claude version, account, host policy stack, and lab turn.
 It cannot prove the setting for later launches because neither Claude nor Herdr exposes the effective resolved Remote Control state through a machine-readable interface.
-Run it only after the system policy is installed and from a pre-registered trusted worktree with `CLAUDE_CONFIG_DIR` selecting the target account.
+Run it only after the optional system policy is installed and from a pre-registered trusted worktree with `CLAUDE_CONFIG_DIR` selecting the target account.
 
 ```sh
 FM_CLAUDE_RC_OFF_LIVE_E2E=1 tests/fm-claude-rc-off-live-e2e.test.sh
@@ -22,8 +22,8 @@ FM_CLAUDE_RC_OFF_LIVE_E2E=1 tests/fm-claude-rc-off-live-e2e.test.sh
 
 Successful guard exit includes lab teardown and the default-session fleet-state tripwire.
 
-[`fm-claude-rc-off.sh`](../../bin/fm-claude-rc-off.sh) owns managed default installation, version validation, and the explicit effective-state limitation.
-The default mechanism is Claude's documented [`disableRemoteControl` setting](https://code.claude.com/docs/en/settings) at [managed-settings precedence](https://code.claude.com/docs/en/settings#settings-precedence).
+[`fm-claude-rc-off.sh`](../../bin/fm-claude-rc-off.sh) owns optional managed default installation, version validation, and the explicit effective-state limitation.
+The default mechanism is Claude's documented [`disableRemoteControl` setting](https://code.claude.com/docs/en/settings), passed inline for managed harness launches and available at [managed-settings precedence](https://code.claude.com/docs/en/settings#settings-precedence) for raw commands.
 The portable regression is [`fm-claude-rc-off.test.sh`](../../tests/fm-claude-rc-off.test.sh), and the opt-in observation above must be rerun after Claude or Herdr upgrades before recording new empirical evidence.
 The common Claude preflight applies to identified Claude workers and secondmates across tmux, Herdr, Zellij, Orca, and cmux without altering their transport interfaces.
 

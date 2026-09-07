@@ -46,7 +46,7 @@ The controls are scoped to the launched process and never modify the captain's g
 
 ## Remote Control
 
-[`configuration.md`](../../../../../docs/configuration.md#claude-remote-control-best-effort-default) owns the one-time policy setup, launch preflight behavior, raw-command limits, and captain-authorized best-effort security boundary.
+[`configuration.md`](../../../../../docs/configuration.md#claude-remote-control-best-effort-default) owns inline launch enforcement, optional raw-command policy setup, preflight behavior, raw-command limits, and the captain-authorized best-effort security boundary.
 The [runtime verification record](../../../../../docs/verification/runtime-backends.md#claude-remote-control-best-effort-default) owns the portable regression and opt-in real-harness observation.
 
 ## Primary integration

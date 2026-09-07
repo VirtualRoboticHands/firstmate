@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install or check Firstmate's best-effort managed Claude Remote Control default.
 # Usage: fm-claude-rc-off.sh install-policy
+#        fm-claude-rc-off.sh check-version [claude-executable]
 #        fm-claude-rc-off.sh check-default [claude-executable]
 # The check confirms a supported Claude version and Firstmate's managed fragment.
 # It cannot prove the effective value after later drop-ins or higher managed tiers.
@@ -8,7 +9,7 @@
 set -euo pipefail
 
 die() { printf 'fm-claude-rc-off: %s\n' "$*" >&2; exit 1; }
-usage() { sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 managed_dir() {
   if [ -n "${FM_TEST_CLAUDE_MANAGED_SETTINGS_DIR:-}" ]; then
@@ -83,6 +84,7 @@ install_policy() {
 
 case "${1:-}" in
   install-policy) [ "$#" -eq 1 ] || die 'install-policy takes no arguments'; install_policy ;;
+  check-version) shift; [ "$#" -le 1 ] || die 'check-version accepts at most one Claude executable'; check_version "${1:-claude}" ;;
   check-default) shift; check_default "$@" ;;
   --help|-h|help) usage ;;
   *) usage >&2; exit 2 ;;

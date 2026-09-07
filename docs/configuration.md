@@ -340,7 +340,12 @@ For omp secondmate launches, `fm-spawn.sh` passes no `-e` at all: omp auto-disco
 
 ## Claude Remote Control best-effort default
 
-Before spawning a Claude crewmate or secondmate, install Firstmate's idempotent machine-managed default once on each host with root privileges:
+Normal Claude crewmate and secondmate launches need no privileged setup.
+Firstmate requires Claude 2.1.128 or newer and passes `disableRemoteControl=true` in the launch's inline settings while preserving the selected account and its configuration.
+Canonical launches bind that version check and the backend launch to the same absolute executable.
+
+An identified raw Claude command is kept byte-for-byte, so Firstmate cannot safely merge the setting into it.
+Use the managed Claude harness for clone-and-run operation, or install Firstmate's optional idempotent machine-managed default once on each host with root privileges before using raw Claude commands:
 
 ```sh
 sudo bin/fm-claude-rc-off.sh install-policy
@@ -348,14 +353,13 @@ sudo bin/fm-claude-rc-off.sh install-policy
 
 Linux installs `/etc/claude-code/managed-settings.d/50-firstmate-remote-control.json`, and macOS installs `/Library/Application Support/ClaudeCode/managed-settings.d/50-firstmate-remote-control.json`.
 The helper requires the production fragment to be a regular root-owned file that is not writable by group or others.
-An identified Claude launch refuses before creating task state unless that fragment contains `disableRemoteControl=true` and the resolved Claude executable is version 2.1.128 or newer.
-Canonical launches bind that check and the backend launch to the same absolute executable.
+An identified raw Claude launch refuses before creating task state unless that fragment contains `disableRemoteControl=true` and the resolved Claude executable is version 2.1.128 or newer.
 Identified raw Claude launches retain the authored command, but Firstmate also resolves the executable in the launch pane, including an unquoted literal leading `PATH=...` assignment, and refuses a resolution or version mismatch.
 A raw command with a quoted, escaped, expanded, or otherwise ambiguous leading assignment is refused; use a managed harness launch or an unquoted literal assignment instead.
 Raw launches identified as another harness remain independent of this Claude policy setup.
 
 This mechanism makes RC-off the effective default for normal fleet launches, but it does not prove Claude's effective resolved setting.
-A later alphabetic file-managed fragment or a higher server-managed or MDM tier can override the fragment, and an adversarial raw-shell wrapper can deliberately evade the version preflight.
+A managed, server-managed, or MDM tier can override inline settings; a later alphabetic file-managed fragment or a higher managed tier can override the optional machine fragment; and an adversarial raw-shell wrapper can deliberately evade the version preflight.
 Those cases are outside the captain-authorized threat model because neither Claude nor Herdr exposes a machine-readable effective-state oracle.
 [`verification/runtime-backends.md`](verification/runtime-backends.md#claude-remote-control-best-effort-default) owns the repeatable portable regression and opt-in real-harness observation for this boundary.
 

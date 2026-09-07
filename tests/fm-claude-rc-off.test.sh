@@ -25,10 +25,11 @@ if PATH="$LAB/bin:$PATH" FM_TEST_CLAUDE_MANAGED_SETTINGS_DIR="$POLICY_DIR" \
   "$HELPER" check-default >/dev/null 2>&1; then
   fail 'test managed path accepted without the test guard'
 fi
+run_helper check-version >/dev/null || fail 'supported Claude version required a managed policy'
 if run_helper check-default >/dev/null 2>&1; then
   fail 'missing managed default accepted'
 fi
-pass 'managed default preflight fails closed when its fragment is absent'
+pass 'version preflight is clone-and-run while managed-default checks fail closed'
 
 run_helper install-policy >/dev/null
 out=$(run_helper check-default)
@@ -39,13 +40,13 @@ run_helper install-policy >/dev/null
 jq -e 'keys == ["disableRemoteControl"] and .disableRemoteControl == true' "$POLICY" >/dev/null || fail 'idempotent install changed policy semantics'
 pass 'managed default installation is semantic and explicitly best-effort'
 
-if RC_VERSION='2.1.127 (Claude Code)' run_helper check-default >/dev/null 2>&1; then
+if RC_VERSION='2.1.127 (Claude Code)' run_helper check-version >/dev/null 2>&1; then
   fail 'unsupported Claude version accepted'
 fi
-if RC_VERSION='vendor changed banner' run_helper check-default >/dev/null 2>&1; then
+if RC_VERSION='vendor changed banner' run_helper check-version >/dev/null 2>&1; then
   fail 'unrecognized Claude version accepted'
 fi
-pass 'managed default preflight rejects unsupported Claude versions'
+pass 'version preflight rejects unsupported Claude versions without requiring policy setup'
 
 printf '%s\n' '{"disableRemoteControl":false}' > "$POLICY_DIR/99-later-managed.json"
 out=$(run_helper check-default)

@@ -1413,7 +1413,7 @@ launch_template() {
     # alone disables the feature; keep both so a managed override of one still
     # leaves the other in force. Both are per-launch, scoped to this invocation only,
     # and never touch the captain's global ~/.claude/settings.json.
-    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off"}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off","disableRemoteControl":true}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     codex)
       if [ "$kind" = secondmate ]; then
         printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
@@ -1663,8 +1663,14 @@ if [ "$HARNESS" = claude ]; then
     esac
     CLAUDE_VERSION=$("$CLAUDE_EXECUTABLE" --version 2>&1 || true)
   fi
-  "$FM_ROOT/bin/fm-claude-rc-off.sh" check-default "$CLAUDE_EXECUTABLE" >/dev/null || {
-    echo "error: Claude best-effort managed RC-off default preflight failed; refusing launch. Run '$FM_ROOT/bin/fm-claude-rc-off.sh install-policy' with system privileges." >&2
+  CLAUDE_PREFLIGHT=check-version
+  [ "$RAW_LAUNCH" -eq 0 ] || CLAUDE_PREFLIGHT=check-default
+  "$FM_ROOT/bin/fm-claude-rc-off.sh" "$CLAUDE_PREFLIGHT" "$CLAUDE_EXECUTABLE" >/dev/null || {
+    if [ "$RAW_LAUNCH" -eq 1 ]; then
+      echo "error: raw Claude best-effort managed RC-off default preflight failed; refusing launch. Use the managed Claude harness or run '$FM_ROOT/bin/fm-claude-rc-off.sh install-policy' with system privileges." >&2
+    else
+      echo "error: Claude RC-off version preflight failed; refusing launch." >&2
+    fi
     exit 1
   }
 fi

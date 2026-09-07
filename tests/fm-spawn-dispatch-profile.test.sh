@@ -133,7 +133,7 @@ test_no_profile_keeps_claude_profile_defaults() {
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
 
   launch=$(cat "$LAUNCH_LOG")
-  expected="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 '$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\"}' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/launch-brief.md')\""
+  expected="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 '$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"disableRemoteControl\":true}' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/launch-brief.md')\""
   [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
@@ -551,8 +551,8 @@ test_unquoted_leading_assignment_keeps_raw_claude_unchanged() {
   pass "unquoted leading assignment keeps raw Claude preflight and launch"
 }
 
-test_claude_spawn_refuses_missing_managed_policy() {
-  local rec id out status
+test_claude_spawn_enforces_inline_rc_off_without_managed_policy() {
+  local rec id out status launch
   id="profile-claude-policy-missing-${RANDOM}"
   rec=$(make_spawn_case "$id" claude "$id")
   read_case_record "$rec"
@@ -560,11 +560,11 @@ test_claude_spawn_refuses_missing_managed_policy() {
   out=$(FM_TEST_CLAUDE_MANAGED_POLICY_MODE=missing \
     run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
   status=$?
-  expect_code 1 "$status" "Claude spawn without managed policy must fail closed: $out"
-  assert_contains "$out" "best-effort managed RC-off default preflight failed" "missing-default refusal was not actionable"
-  [ ! -s "$LAUNCH_LOG" ] || fail 'missing-policy Claude launch reached the pane'
-  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail 'missing-policy Claude launch published metadata'
-  pass "identified Claude spawn refuses when its managed default is missing"
+  expect_code 0 "$status" "managed Claude spawn should not require privileged policy setup: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" '--settings '\''{"feedbackDrafts":"off","disableRemoteControl":true}'\''' "missing-policy launch omitted inline RC-off enforcement"
+  [ -e "$HOME_DIR/state/$id.meta" ] || fail 'clone-and-run Claude launch did not publish metadata'
+  pass "managed Claude spawn enforces inline RC-off without privileged setup"
 }
 
 test_prefixed_raw_claude_refuses_missing_managed_policy() {
@@ -646,7 +646,7 @@ test_claude_threads_model_and_effort() {
   expect_code 0 "$status" "claude spawn with profile flags should succeed"
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude sonnet high
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "'$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\"}' --model 'sonnet' --effort 'high'" \
+  assert_contains "$launch" "'$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"disableRemoteControl\":true}' --model 'sonnet' --effort 'high'" \
     "claude launch did not thread model and effort flags"
   assert_not_contains "$launch" "--tui-mode" "non-Pi launches must not receive Pi's TUI mode override"
   pass "claude receives --model and --effort profile flags"
@@ -1002,7 +1002,7 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   status=$?
   expect_code 0 "$status" "claude spawn with CLAUDE_CONFIG_DIR set should succeed"
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 '$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\"}'" \
+  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 '$FAKEBIN_DIR/claude' --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"disableRemoteControl\":true}'" \
     "claude launch did not forward firstmate's CLAUDE_CONFIG_DIR to the crewmate pane"
   pass "claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store"
 }
@@ -1362,7 +1362,7 @@ test_raw_claude_identical_backend_executable_launches_unchanged
 test_raw_claude_path_assignment_uses_assigned_executable
 test_quoted_leading_assignment_refuses_raw_launch
 test_unquoted_leading_assignment_keeps_raw_claude_unchanged
-test_claude_spawn_refuses_missing_managed_policy
+test_claude_spawn_enforces_inline_rc_off_without_managed_policy
 test_prefixed_raw_claude_refuses_missing_managed_policy
 test_claude_spawn_refuses_unsupported_version
 test_claude_launch_uses_preflighted_executable
