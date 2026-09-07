@@ -117,6 +117,7 @@ install_project_claude_fixture() {
   local project=$1 relative=$2 version=$3 target
   target="$project/$relative"
   mkdir -p "$(dirname "$target")"
+  # shellcheck disable=SC2016 # ${1:-} expands when the generated fixture runs.
   printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then\n  printf '\''%%s\\n'\'' '\''%s (Claude Code)'\''\nfi\n' "$version" > "$target"
   chmod +x "$target"
   git -C "$project" add "$relative"
