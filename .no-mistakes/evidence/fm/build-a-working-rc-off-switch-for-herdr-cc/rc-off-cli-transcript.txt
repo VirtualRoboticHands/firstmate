@@ -1,0 +1,23 @@
+Mocked end-user CLI verification (no real Herdr call; no system policy change)
+
+$ fm-claude-rc-off.sh check-default  # before policy install
+fm-claude-rc-off: managed RC-off default missing or unsafe: <lab>/managed-settings.d/50-firstmate-remote-control.json; run this helper's install-policy command with system privileges
+
+$ fm-claude-rc-off.sh install-policy
+Claude best-effort managed RC-off default installed; effective state unverified: <lab>/managed-settings.d/50-firstmate-remote-control.json
+
+$ fm-claude-rc-off.sh check-default  # supported Claude 2.1.263
+Claude best-effort managed RC-off default present; effective state unverified: <lab>/managed-settings.d/50-firstmate-remote-control.json
+
+$ jq . managed-settings.d/50-firstmate-remote-control.json
+{
+  "disableRemoteControl": true
+}
+
+$ RC_VERSION="2.1.127 (Claude Code)" fm-claude-rc-off.sh check-default
+fm-claude-rc-off: Claude 2.1.127 (Claude Code) does not honor disableRemoteControl
+
+Focused automated behavior checks:
+- bash tests/fm-claude-rc-off.test.sh: exit 0
+- bash tests/fm-spawn-dispatch-profile.test.sh: exit 0
+- bash tests/fm-control-relaunch.test.sh: exit 0 on three consecutive complete runs
