@@ -1,0 +1,22 @@
+=== DEFAULT-OFF PRESENTATION ===
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+task-default [key=release] needs-decision: pick stable or canary
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+=== DELTA FIRST PRESENTATION ===
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+task-delta [key=release] needs-decision: pick stable or canary
+1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions
+=== DELTA UNCHANGED PRESENTATION ===
+1 open (1 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions
+=== DELTA CHANGED PRESENTATION ===
+OPEN DECISIONS (opened, changed, or closed since last presentation):
+task-delta [key=release] blocked: waiting for captain
+1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions
+=== DELTA CLOSED PRESENTATION ===
+OPEN DECISIONS (opened, changed, or closed since last presentation):
+task-delta [key=release] closed (was blocked: waiting for captain)
+0 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions
+=== EXPLICIT FULL LIST ===
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+task-delta [key=release] needs-decision: final approval needed
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'

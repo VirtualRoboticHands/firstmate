@@ -1,0 +1,4 @@
+needs-decision [key=release]: pick stable or canary
+blocked [key=release]: waiting for captain
+resolved [key=release]: choose stable
+needs-decision [key=release]: final approval needed
