@@ -213,7 +213,8 @@ The flag is a home-local supervision-noise preference and is not inherited by se
 The optional local, gitignored `config/open-decisions-delta` presence flag opts this home into delta-only OPEN DECISIONS presentation on every wake drain, including the drain run by session start.
 Without it, the drain keeps the existing full-list output byte-for-byte on every presentation.
 With it, the first presentation shows every open decision, and later presentations show only decisions that opened, changed, or closed since the last successful presentation.
-Every delta-mode drain prints `N open (M unchanged) - full list: bin/fm-wake-drain.sh --open-decisions`, including when no decision changed or remains open.
+Every delta-mode drain that acquires the presentation lock prints `N open (M unchanged) - full list: bin/fm-wake-drain.sh --open-decisions`, including when no decision changed or remains open.
+A drain that reports `STATUS PRESENTATION SKIPPED` after the bounded lock wait presents no status content and is exempt; the lock holder's presentation prints the summary, and the skipped drain retries status presentation on the next wake.
 The presentation receipt lives at `state/.open-decisions-presentation`, advances only after the prepared output reaches stdout successfully, and never changes the durable status-log fold or its per-task cursors.
 Only the file's presence is read, so its contents are ignored; remove it to return to the default full-list presentation.
 

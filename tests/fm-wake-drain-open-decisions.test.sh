@@ -200,7 +200,7 @@ test_default_mode_keeps_the_existing_bytes() {
   pass "flag-off default preserves the existing full OPEN DECISIONS output byte-for-byte"
 }
 
-test_delta_mode_reports_only_changes_and_always_summarizes() {
+test_delta_mode_reports_only_changes_and_summarizes_presentations() {
   local dir state out
   dir=$(make_case delta)
   state="$dir/state"
@@ -250,7 +250,49 @@ test_delta_mode_reports_only_changes_and_always_summarizes() {
     || fail "full-list pointer command failed"
   grep -F 'task-delta [key=release] needs-decision: pick stable, canary, or both' "$out" >/dev/null \
     || fail "the summary's full-list command did not print every open decision: $(cat "$out")"
-  pass "delta mode prints opened, changed, and closed decisions while every drain keeps a count and full-list pointer"
+  pass "delta mode prints opened, changed, and closed decisions while every presentation keeps a count and full-list pointer"
+}
+
+test_delta_mode_exempts_a_lock_skipped_drain_from_the_summary() {
+  local dir state out holder i=0
+  dir=$(make_case delta-lock-skip)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config"
+  : > "$dir/home/config/open-decisions-delta"
+  printf 'needs-decision [key=release]: pick stable or canary\n' > "$state/task-lock.status"
+
+  FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    fm_lock_acquire_wait "$2"
+    printf "ready\n" > "$3"
+    exec sleep 30
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$state/.status-presentation-lock" "$dir/presentation.ready" &
+  holder=$!
+  while [ "$i" -lt 100 ] && [ ! -s "$dir/presentation.ready" ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -s "$dir/presentation.ready" ] \
+    || { kill "$holder" 2>/dev/null || true; fail "presentation holder never acquired its lock"; }
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" FM_STATUS_PRESENTATION_LOCK_TIMEOUT=1 \
+    "$DRAIN" > "$out" \
+    || { kill "$holder" 2>/dev/null || true; fail "lock-skipped delta drain failed"; }
+  grep -F "STATUS PRESENTATION SKIPPED: lock remains held by live pid $holder" "$out" >/dev/null \
+    || { kill "$holder" 2>/dev/null || true; fail "contended delta drain did not report its skipped presentation: $(cat "$out")"; }
+  if grep -F 'open (' "$out" >/dev/null; then
+    kill "$holder" 2>/dev/null || true
+    fail "lock-skipped delta drain printed a summary despite presenting nothing: $(cat "$out")"
+  fi
+
+  kill "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" FM_STATUS_PRESENTATION_LOCK_TIMEOUT=1 \
+    "$DRAIN" > "$out" || fail "delta presentation retry failed"
+  grep -Fx '1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "presenting delta drain omitted its persistent summary: $(cat "$out")"
+  pass "delta summary is required on presentations and exempt on a deliberate lock skip"
 }
 
 test_full_list_command_has_no_aggregate_byte_cap() {
@@ -402,7 +444,8 @@ test_over_long_decision_note_is_capped_with_a_marker() {
 
 test_buried_decision_still_surfaces
 test_default_mode_keeps_the_existing_bytes
-test_delta_mode_reports_only_changes_and_always_summarizes
+test_delta_mode_reports_only_changes_and_summarizes_presentations
+test_delta_mode_exempts_a_lock_skipped_drain_from_the_summary
 test_full_list_command_has_no_aggregate_byte_cap
 test_delta_mode_emits_every_over_cap_open_and_closed_entry
 test_delta_mode_summarizes_an_empty_fleet
