@@ -1374,6 +1374,7 @@ EOF
   make_fake_ps_claude "$fakebin"
   rm -f "$fakebin/node"
 
+  : > "$home/config/open-decisions-delta"
   printf 'needs-decision: pick a library\n' > "$home/state/task-z.status"
   append_wake "$home/state" signal task-z.status "needs-decision: pick a library"
 
@@ -1386,8 +1387,10 @@ EOF
   # fm-wake-drain.sh's real drained record (raw tab-separated queue line).
   assert_contains "$out" "$(printf 'signal\ttask-z.status\tneeds-decision: pick a library')" "fm-wake-drain.sh's real drained record did not appear"
   assert_contains "$out" "wake annotation: latest wake-EVENT observed at drain, not current state: task-z.status: needs-decision: pick a library" "fm-session-start.sh did not preserve the drain's separate annotation line"
+  assert_contains "$out" "task-z needs-decision: pick a library" "a fresh delta receipt did not preserve session-start's first full OPEN DECISIONS list"
+  assert_contains "$out" "1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions" "session-start's delta presentation omitted its persistent summary"
 
-  pass "fm-session-start.sh composes the real fm-lock.sh, fm-bootstrap.sh, and fm-wake-drain.sh output verbatim"
+  pass "fm-session-start.sh composes the real scripts and preserves delta mode's first full OPEN DECISIONS list"
 }
 
 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep() {

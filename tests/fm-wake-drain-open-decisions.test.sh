@@ -178,6 +178,97 @@ test_status_symlink_is_not_followed() {
   pass "the fleet-wide decision scan does not follow status symlinks"
 }
 
+test_default_mode_keeps_the_existing_bytes() {
+  local dir state out expected
+  dir=$(make_case default-bytes)
+  state="$dir/state"
+  out="$dir/drain.out"
+  expected="$dir/expected.out"
+  mkdir -p "$dir/home/config"
+  printf 'needs-decision [key=release]: pick stable or canary\n' > "$state/task-default.status"
+  {
+    printf 'OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):\n'
+    printf 'task-default [key=release] needs-decision: pick stable or canary\n'
+    printf "OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'\n"
+  } > "$expected"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "default drain failed"
+
+  cmp -s "$expected" "$out" \
+    || fail "default mode changed the existing full-list bytes: $(cat "$out")"
+  pass "flag-off default preserves the existing full OPEN DECISIONS output byte-for-byte"
+}
+
+test_delta_mode_reports_only_changes_and_always_summarizes() {
+  local dir state out
+  dir=$(make_case delta)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config"
+  : > "$dir/home/config/open-decisions-delta"
+  printf 'needs-decision [key=release]: pick stable or canary\n' > "$state/task-delta.status"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "first delta drain failed"
+  grep -F 'task-delta [key=release] needs-decision: pick stable or canary' "$out" >/dev/null \
+    || fail "a fresh delta presentation did not show the full open set: $(cat "$out")"
+  grep -Fx '1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "a fresh delta presentation omitted its count and pointer: $(cat "$out")"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "unchanged delta drain failed"
+  grep -Fx '1 open (1 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "an unchanged delta presentation omitted its count and pointer: $(cat "$out")"
+  if grep -F 'pick stable or canary' "$out" >/dev/null; then
+    fail "an unchanged decision was re-printed in delta mode: $(cat "$out")"
+  fi
+
+  printf 'needs-decision [key=release]: pick stable, canary, or both\n' >> "$state/task-delta.status"
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "changed delta drain failed"
+  grep -F 'task-delta [key=release] needs-decision: pick stable, canary, or both' "$out" >/dev/null \
+    || fail "a changed decision did not print in delta mode: $(cat "$out")"
+
+  printf 'blocked [key=signing]: choose a signing identity\n' >> "$state/task-delta.status"
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "new delta drain failed"
+  grep -F 'task-delta [key=signing] blocked: choose a signing identity' "$out" >/dev/null \
+    || fail "a newly opened decision did not print in delta mode: $(cat "$out")"
+  grep -Fx '2 open (1 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "a new decision produced the wrong delta summary: $(cat "$out")"
+
+  printf 'resolved [key=signing]: use the release identity\n' >> "$state/task-delta.status"
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "closed delta drain failed"
+  grep -F 'task-delta [key=signing] closed (was blocked: choose a signing identity)' "$out" >/dev/null \
+    || fail "a closed decision did not print in delta mode: $(cat "$out")"
+  grep -Fx '1 open (1 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "a closed decision produced the wrong delta summary: $(cat "$out")"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" --open-decisions > "$out" \
+    || fail "full-list pointer command failed"
+  grep -F 'task-delta [key=release] needs-decision: pick stable, canary, or both' "$out" >/dev/null \
+    || fail "the summary's full-list command did not print every open decision: $(cat "$out")"
+  pass "delta mode prints opened, changed, and closed decisions while every drain keeps a count and full-list pointer"
+}
+
+test_delta_mode_summarizes_an_empty_fleet() {
+  local dir state out
+  dir=$(make_case delta-empty)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config"
+  : > "$dir/home/config/open-decisions-delta"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "empty delta drain failed"
+
+  grep -Fx '0 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "an empty delta drain omitted its persistent summary: $(cat "$out")"
+  pass "delta mode prints its count and full-list pointer even when no decision is open"
+}
+
 # The per-item cut now comes from bin/fm-line-cap-lib.sh, shared with the
 # session-start digest's status tails so one truncation marker means the same
 # thing wherever an agent meets it. This pins the drain's own end of that
@@ -216,6 +307,9 @@ test_over_long_decision_note_is_capped_with_a_marker() {
 }
 
 test_buried_decision_still_surfaces
+test_default_mode_keeps_the_existing_bytes
+test_delta_mode_reports_only_changes_and_always_summarizes
+test_delta_mode_summarizes_an_empty_fleet
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it
 test_later_unrelated_terminal_line_does_not_close_it

@@ -10,6 +10,8 @@
 # retirement; docs/watcher-continuity.md owns the recovery contract.
 # FM_STATUS_PRESENTATION_LOCK_TIMEOUT sets the positive whole-second wait for
 # presentation-path locks (default 10); queue mutation locks remain blocking.
+# config/open-decisions-delta opts this home into delta-only OPEN DECISIONS
+# presentation; absent, the existing full-list output stays byte-for-byte.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DRAIN_TMP=
 DRAIN_VIEW_TMP=
+OPEN_DECISIONS_PRESENTATION_TMP=
 DRAIN_LOCK_HELD=false
 RAW_ROWS=
 RECOVERY_MARKER="$STATE/.watcher-down"
@@ -40,6 +43,9 @@ ACK_FINGERPRINTS=
 ACK_NOTICE_FINGERPRINTS=
 PRESENTATION_LOCK_TIMEOUT=${FM_STATUS_PRESENTATION_LOCK_TIMEOUT:-10}
 case "$PRESENTATION_LOCK_TIMEOUT" in ''|*[!0-9]*|0) PRESENTATION_LOCK_TIMEOUT=10 ;; esac
+OPEN_DECISIONS_DELTA=false
+[ ! -e "$FM_HOME/config/open-decisions-delta" ] || OPEN_DECISIONS_DELTA=true
+OPEN_DECISIONS_ONLY=false
 
 # --- per-actor consume (docs/watcher-continuity.md "Per-actor acknowledgement") --
 # main (FM_SUPERVISION_ACTOR unset or "main", via fm-lease-lib.sh's fm_lease_actor
@@ -195,6 +201,10 @@ presented_max_row() { # <rows-file>
 
 case "${1:-}" in
   '') ;;
+  --open-decisions)
+    [ "$#" -eq 1 ] || { echo "wake drain: unexpected open-decisions arguments" >&2; exit 2; }
+    OPEN_DECISIONS_ONLY=true
+    ;;
   --ack-through)
     ACK_THROUGH=${2:-}
     case "$ACK_THROUGH" in ''|*[!0-9]*) echo "wake drain: invalid acknowledgement sequence" >&2; exit 2 ;; esac
@@ -204,10 +214,10 @@ case "${1:-}" in
     case "$ACK_GENERATION" in ''|*[!A-Za-z0-9._-]*) echo "wake drain: invalid recovery generation" >&2; exit 2 ;; esac
     [ "$#" -eq 4 ] || { echo "wake drain: unexpected acknowledgement arguments" >&2; exit 2; }
     ;;
-  *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION]" >&2; exit 2 ;;
+  *) echo "usage: fm-wake-drain.sh [--open-decisions | --ack-through SEQUENCE --recovery-generation GENERATION]" >&2; exit 2 ;;
 esac
 
-[ "$ACTOR" != branch ] || require_branch_eligible_rows || exit 1
+[ "$OPEN_DECISIONS_ONLY" = true ] || [ "$ACTOR" != branch ] || require_branch_eligible_rows || exit 1
 
 # Defense in depth for the supervision chain: this script runs at the top of
 # every wake-handling and recovery turn, so assert supervision health here too. A
@@ -450,6 +460,10 @@ print_open_decisions_section() {
   else
     open=$(scan_open_decisions_incremental "$STATE") || return 1
   fi
+  if [ "$OPEN_DECISIONS_DELTA" = true ]; then
+    print_open_decisions_delta "$open"
+    return
+  fi
   [ -n "$open" ] || return 0
 
   while IFS=$(printf '\t') read -r task key verb note; do
@@ -486,6 +500,98 @@ EOF
   # depends on the busy worker writing a matching resolved line (contract:
   # bin/fm-send.sh header).
   printf "OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'\n" || return 1
+}
+
+open_decision_row() {  # <open-set> <task> <key>
+  local open=$1 want_task=$2 want_key=$3 task key verb note
+  while IFS=$(printf '\t') read -r task key verb note; do
+    [ "$task" = "$want_task" ] && [ "$key" = "$want_key" ] || continue
+    printf '%s\t%s\t%s\t%s' "$task" "$key" "$verb" "$note"
+    return 0
+  done <<EOF
+$open
+EOF
+  return 1
+}
+
+stage_open_decisions_presentation() {  # <open-set>
+  local open=$1
+  OPEN_DECISIONS_PRESENTATION_TMP=$(mktemp "$STATE/.open-decisions-presentation.XXXXXX") || return 1
+  {
+    printf 'version=1\n'
+    [ -z "$open" ] || printf '%s\n' "$open"
+  } > "$OPEN_DECISIONS_PRESENTATION_TMP" || return 1
+}
+
+print_open_decisions_delta() {  # <current-open-set>
+  local open=$1 store="$STATE/.open-decisions-presentation" data previous='' have_previous=false
+  local task key verb note prior line item_bytes=220 global_bytes=4000
+  local output='' used=0 shown=0 omitted=0 bytes open_count=0 unchanged=0
+
+  if [ -f "$store" ] && [ -r "$store" ] && [ ! -L "$store" ]; then
+    data=$(LC_ALL=C command cat "$store" 2>/dev/null) || data=''
+    case "$data" in
+      version=1) have_previous=true ;;
+      version=1$'\n'*) have_previous=true; previous=${data#*$'\n'} ;;
+    esac
+  fi
+  stage_open_decisions_presentation "$open" || return 1
+
+  while IFS=$(printf '\t') read -r task key verb note; do
+    [ -n "$task" ] || continue
+    open_count=$((open_count + 1))
+    prior=$(open_decision_row "$previous" "$task" "$key") || prior=''
+    if [ "$have_previous" = true ] && [ "$prior" = "$task$(printf '\t')$key$(printf '\t')$verb$(printf '\t')$note" ]; then
+      unchanged=$((unchanged + 1))
+      continue
+    fi
+    line="$task"
+    [ "$key" = default ] || line="$line [key=$key]"
+    line="$line $verb: $note"
+    fm_cap_line_var "$line" $((item_bytes - 1))
+    line=$FM_LINE_CAP_LINE
+    bytes=$(( ${#line} + 1 ))
+    if [ $((used + bytes)) -gt "$global_bytes" ]; then omitted=$((omitted + 1)); continue; fi
+    output="$output$line
+"
+    used=$((used + bytes))
+    shown=$((shown + 1))
+  done <<EOF
+$open
+EOF
+
+  if [ "$have_previous" = true ]; then
+    while IFS=$(printf '\t') read -r task key verb note; do
+      [ -n "$task" ] || continue
+      open_decision_row "$open" "$task" "$key" >/dev/null && continue
+      line="$task"
+      [ "$key" = default ] || line="$line [key=$key]"
+      line="$line closed (was $verb: $note)"
+      fm_cap_line_var "$line" $((item_bytes - 1))
+      line=$FM_LINE_CAP_LINE
+      bytes=$(( ${#line} + 1 ))
+      if [ $((used + bytes)) -gt "$global_bytes" ]; then omitted=$((omitted + 1)); continue; fi
+      output="$output$line
+"
+      used=$((used + bytes))
+      shown=$((shown + 1))
+    done <<EOF
+$previous
+EOF
+  fi
+
+  if [ "$shown" -gt 0 ] || [ "$omitted" -gt 0 ]; then
+    if [ "$have_previous" = true ]; then
+      printf 'OPEN DECISIONS (opened, changed, or closed since last presentation):\n' || return 1
+    else
+      printf 'OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):\n' || return 1
+    fi
+    printf '%s' "$output" || return 1
+    if [ "$omitted" -gt 0 ]; then
+      printf 'OPEN DECISIONS: %d more omitted (byte cap)\n' "$omitted" || return 1
+    fi
+  fi
+  printf '%d open (%d unchanged) - full list: bin/fm-wake-drain.sh --open-decisions\n' "$open_count" "$unchanged" || return 1
 }
 
 # Print the RECORD DIVERGENCE section: every captain call whose two records
@@ -551,7 +657,7 @@ EOF
 print_status_sections() {
   local snapshot=${1:-} fully_presented=${2:-} acknowledged prepared
   if [ -z "$snapshot" ]; then snapshot=$(status_presentation_snapshot "$STATE") || return 1; fi
-  [ -n "$snapshot" ] || return 0
+  [ -n "$snapshot" ] || [ "$OPEN_DECISIONS_DELTA" = true ] || return 0
   acknowledged=$(status_acknowledge_presented_snapshot "$STATE" "$snapshot" "$fully_presented") || return 1
   prepared=$(mktemp "$STATE/.status-presentation.prepared.XXXXXX") || return 1
   if ! {
@@ -561,6 +667,8 @@ print_status_sections() {
       && print_record_divergence_section
   } > "$prepared"; then
     rm -f -- "$prepared"
+    [ -z "$OPEN_DECISIONS_PRESENTATION_TMP" ] || rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP"
+    OPEN_DECISIONS_PRESENTATION_TMP=
     return 1
   fi
   # Prepare every section before presentation, but do not commit its receipt
@@ -568,11 +676,19 @@ print_status_sections() {
   # leave the receipt behind so the next drain can recover the presentation.
   if ! command cat "$prepared"; then
     rm -f -- "$prepared"
+    [ -z "$OPEN_DECISIONS_PRESENTATION_TMP" ] || rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP"
+    OPEN_DECISIONS_PRESENTATION_TMP=
     return 1
   fi
   if ! status_commit_presentation_snapshot "$STATE" "$acknowledged"; then
     rm -f -- "$prepared"
+    [ -z "$OPEN_DECISIONS_PRESENTATION_TMP" ] || rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP"
+    OPEN_DECISIONS_PRESENTATION_TMP=
     return 1
+  fi
+  if [ -n "$OPEN_DECISIONS_PRESENTATION_TMP" ]; then
+    mv -f "$OPEN_DECISIONS_PRESENTATION_TMP" "$STATE/.open-decisions-presentation" || return 1
+    OPEN_DECISIONS_PRESENTATION_TMP=
   fi
   rm -f -- "$prepared"
 }
@@ -604,7 +720,9 @@ print_status_presentation() {  # [<deduped-raw-rows>]
       fully_presented=$(printf '%s\n' "$annotation_manifest" | awk -F '\t' '$2 == "direct" { sub(/\.status$/, "", $1); print $1 }') || rc=1
     fi
   fi
-  if [ "$rc" -eq 0 ] && [ -n "$snapshot" ]; then print_status_sections "$snapshot" "$fully_presented" || rc=1; fi
+  if [ "$rc" -eq 0 ] && { [ -n "$snapshot" ] || [ "$OPEN_DECISIONS_DELTA" = true ]; }; then
+    print_status_sections "$snapshot" "$fully_presented" || rc=1
+  fi
   fm_lock_release "$lock"
   return "$rc"
 }
@@ -614,11 +732,18 @@ cleanup() {
   local status=$?
   [ -z "$DRAIN_TMP" ] || rm -f -- "$DRAIN_TMP" 2>/dev/null || true
   [ -z "$DRAIN_VIEW_TMP" ] || rm -f -- "$DRAIN_VIEW_TMP" 2>/dev/null || true
+  [ -z "$OPEN_DECISIONS_PRESENTATION_TMP" ] || rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP" 2>/dev/null || true
   if [ "$DRAIN_LOCK_HELD" = true ]; then
     fm_lock_release "$FM_WAKE_QUEUE_LOCK"
   fi
   exit "$status"
 }
+
+if [ "$OPEN_DECISIONS_ONLY" = true ]; then
+  OPEN_DECISIONS_DELTA=false
+  print_open_decisions_section
+  exit
+fi
 
 trap cleanup EXIT
 trap 'exit 130' INT
