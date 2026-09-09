@@ -253,6 +253,31 @@ test_delta_mode_reports_only_changes_and_always_summarizes() {
   pass "delta mode prints opened, changed, and closed decisions while every drain keeps a count and full-list pointer"
 }
 
+test_full_list_command_has_no_aggregate_byte_cap() {
+  local dir state out i=0
+  dir=$(make_case full-list-over-cap)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config"
+  : > "$dir/home/config/open-decisions-delta"
+  while [ "$i" -lt 30 ]; do
+    printf 'needs-decision [key=choice-%02d]: choose option %02d after reviewing the complete fleet context and every relevant dependency before proceeding\n' "$i" "$i" >> "$state/task-full.status"
+    i=$((i + 1))
+  done
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" --open-decisions > "$out" \
+    || fail "over-cap full-list command failed"
+
+  grep -F 'task-full [key=choice-00]' "$out" >/dev/null \
+    || fail "the full-list command omitted the first open decision: $(cat "$out")"
+  grep -F 'task-full [key=choice-29]' "$out" >/dev/null \
+    || fail "the full-list command omitted an open decision beyond the ordinary byte cap: $(cat "$out")"
+  if grep -F 'more omitted (byte cap)' "$out" >/dev/null; then
+    fail "the full-list command retained the ordinary aggregate byte cap: $(cat "$out")"
+  fi
+  pass "the explicit full-list command emits every open decision beyond the ordinary byte cap"
+}
+
 test_delta_mode_summarizes_an_empty_fleet() {
   local dir state out
   dir=$(make_case delta-empty)
@@ -309,6 +334,7 @@ test_over_long_decision_note_is_capped_with_a_marker() {
 test_buried_decision_still_surfaces
 test_default_mode_keeps_the_existing_bytes
 test_delta_mode_reports_only_changes_and_always_summarizes
+test_full_list_command_has_no_aggregate_byte_cap
 test_delta_mode_summarizes_an_empty_fleet
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it
