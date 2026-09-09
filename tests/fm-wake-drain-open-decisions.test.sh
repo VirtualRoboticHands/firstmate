@@ -278,6 +278,46 @@ test_full_list_command_has_no_aggregate_byte_cap() {
   pass "the explicit full-list command emits every open decision beyond the ordinary byte cap"
 }
 
+test_delta_mode_emits_every_over_cap_open_and_closed_entry() {
+  local dir state out i=0
+  dir=$(make_case delta-over-cap)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config"
+  : > "$dir/home/config/open-decisions-delta"
+  while [ "$i" -lt 30 ]; do
+    printf 'needs-decision [key=choice-%02d]: choose option %02d after reviewing the complete fleet context and every relevant dependency before proceeding\n' "$i" "$i" >> "$state/task-delta-cap.status"
+    i=$((i + 1))
+  done
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "over-cap first delta drain failed"
+  grep -F 'task-delta-cap [key=choice-00]' "$out" >/dev/null \
+    || fail "the first delta presentation omitted its first open decision: $(cat "$out")"
+  grep -F 'task-delta-cap [key=choice-29]' "$out" >/dev/null \
+    || fail "the first delta presentation omitted an open decision beyond the ordinary byte cap: $(cat "$out")"
+  grep -Fx '30 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "the over-cap first delta presentation produced the wrong summary: $(cat "$out")"
+
+  i=0
+  while [ "$i" -lt 30 ]; do
+    printf 'resolved [key=choice-%02d]: chose option %02d\n' "$i" "$i" >> "$state/task-delta-cap.status"
+    i=$((i + 1))
+  done
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "over-cap closure delta drain failed"
+  grep -F 'task-delta-cap [key=choice-00] closed' "$out" >/dev/null \
+    || fail "the closure delta omitted its first closed decision: $(cat "$out")"
+  grep -F 'task-delta-cap [key=choice-29] closed' "$out" >/dev/null \
+    || fail "the closure delta omitted a closed decision beyond the ordinary byte cap: $(cat "$out")"
+  grep -Fx '0 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "the over-cap closure delta produced the wrong summary: $(cat "$out")"
+  if grep -F 'more omitted (byte cap)' "$out" >/dev/null; then
+    fail "delta mode retained the ordinary aggregate byte cap: $(cat "$out")"
+  fi
+  pass "delta mode emits every opened and closed entry beyond the ordinary byte cap"
+}
+
 test_delta_mode_summarizes_an_empty_fleet() {
   local dir state out
   dir=$(make_case delta-empty)
@@ -335,6 +375,7 @@ test_buried_decision_still_surfaces
 test_default_mode_keeps_the_existing_bytes
 test_delta_mode_reports_only_changes_and_always_summarizes
 test_full_list_command_has_no_aggregate_byte_cap
+test_delta_mode_emits_every_over_cap_open_and_closed_entry
 test_delta_mode_summarizes_an_empty_fleet
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it

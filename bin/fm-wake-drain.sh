@@ -525,8 +525,8 @@ stage_open_decisions_presentation() {  # <open-set>
 
 print_open_decisions_delta() {  # <current-open-set>
   local open=$1 store="$STATE/.open-decisions-presentation" data previous='' have_previous=false
-  local task key verb note prior line item_bytes=220 global_bytes=4000
-  local output='' used=0 shown=0 omitted=0 bytes open_count=0 unchanged=0
+  local task key verb note prior line item_bytes=220
+  local output='' shown=0 open_count=0 unchanged=0
 
   if [ -f "$store" ] && [ -r "$store" ] && [ ! -L "$store" ]; then
     data=$(LC_ALL=C command cat "$store" 2>/dev/null) || data=''
@@ -550,11 +550,8 @@ print_open_decisions_delta() {  # <current-open-set>
     line="$line $verb: $note"
     fm_cap_line_var "$line" $((item_bytes - 1))
     line=$FM_LINE_CAP_LINE
-    bytes=$(( ${#line} + 1 ))
-    if [ $((used + bytes)) -gt "$global_bytes" ]; then omitted=$((omitted + 1)); continue; fi
     output="$output$line
 "
-    used=$((used + bytes))
     shown=$((shown + 1))
   done <<EOF
 $open
@@ -569,27 +566,21 @@ EOF
       line="$line closed (was $verb: $note)"
       fm_cap_line_var "$line" $((item_bytes - 1))
       line=$FM_LINE_CAP_LINE
-      bytes=$(( ${#line} + 1 ))
-      if [ $((used + bytes)) -gt "$global_bytes" ]; then omitted=$((omitted + 1)); continue; fi
       output="$output$line
 "
-      used=$((used + bytes))
       shown=$((shown + 1))
     done <<EOF
 $previous
 EOF
   fi
 
-  if [ "$shown" -gt 0 ] || [ "$omitted" -gt 0 ]; then
+  if [ "$shown" -gt 0 ]; then
     if [ "$have_previous" = true ]; then
       printf 'OPEN DECISIONS (opened, changed, or closed since last presentation):\n' || return 1
     else
       printf 'OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):\n' || return 1
     fi
     printf '%s' "$output" || return 1
-    if [ "$omitted" -gt 0 ]; then
-      printf 'OPEN DECISIONS: %d more omitted (byte cap)\n' "$omitted" || return 1
-    fi
   fi
   printf '%d open (%d unchanged) - full list: bin/fm-wake-drain.sh --open-decisions\n' "$open_count" "$unchanged" || return 1
 }
