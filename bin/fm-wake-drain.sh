@@ -516,6 +516,8 @@ EOF
 
 stage_open_decisions_presentation() {  # <open-set>
   local open=$1
+  # Receipt identity is the reader-visible task, key, verb, and note. A retired
+  # and recreated task with the same identity is net-unchanged by design.
   OPEN_DECISIONS_PRESENTATION_TMP=$(mktemp "$STATE/.open-decisions-presentation.XXXXXX") || return 1
   {
     printf 'version=1\n'
@@ -647,6 +649,7 @@ EOF
 
 print_status_sections() {
   local snapshot=${1:-} fully_presented=${2:-} acknowledged prepared
+  local open_decisions_receipt="$STATE/.open-decisions-presentation"
   if [ -z "$snapshot" ]; then snapshot=$(status_presentation_snapshot "$STATE") || return 1; fi
   [ -n "$snapshot" ] || [ "$OPEN_DECISIONS_DELTA" = true ] || return 0
   acknowledged=$(status_acknowledge_presented_snapshot "$STATE" "$snapshot" "$fully_presented") || return 1
@@ -678,7 +681,17 @@ print_status_sections() {
     return 1
   fi
   if [ -n "$OPEN_DECISIONS_PRESENTATION_TMP" ]; then
-    mv -f "$OPEN_DECISIONS_PRESENTATION_TMP" "$STATE/.open-decisions-presentation" || return 1
+    if { [ -e "$open_decisions_receipt" ] || [ -L "$open_decisions_receipt" ]; } \
+      && { [ ! -f "$open_decisions_receipt" ] || [ -L "$open_decisions_receipt" ]; }; then
+      rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP" "$prepared"
+      OPEN_DECISIONS_PRESENTATION_TMP=
+      return 1
+    fi
+    if ! mv -f -- "$OPEN_DECISIONS_PRESENTATION_TMP" "$open_decisions_receipt"; then
+      rm -f -- "$OPEN_DECISIONS_PRESENTATION_TMP" "$prepared"
+      OPEN_DECISIONS_PRESENTATION_TMP=
+      return 1
+    fi
     OPEN_DECISIONS_PRESENTATION_TMP=
   fi
   rm -f -- "$prepared"

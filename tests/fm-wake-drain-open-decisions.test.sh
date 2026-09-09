@@ -334,6 +334,35 @@ test_delta_mode_summarizes_an_empty_fleet() {
   pass "delta mode prints its count and full-list pointer even when no decision is open"
 }
 
+test_delta_receipt_rejects_a_symlinked_directory_destination() {
+  local dir state out staged
+  dir=$(make_case delta-receipt-destination)
+  state="$dir/state"
+  out="$dir/drain.out"
+  mkdir -p "$dir/home/config" "$state/receipt-target"
+  : > "$dir/home/config/open-decisions-delta"
+  ln -s receipt-target "$state/.open-decisions-presentation"
+  printf 'needs-decision [key=release]: pick stable or canary\n' > "$state/task-receipt.status"
+
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" 2>&1 \
+    || fail "drain failed while rejecting a symlinked receipt destination"
+  [ -L "$state/.open-decisions-presentation" ] \
+    || fail "the failed receipt commit replaced its symlinked destination"
+  staged=$(find "$state" -maxdepth 1 -name '.open-decisions-presentation.*' -print -quit)
+  [ -z "$staged" ] || fail "the failed receipt commit leaked its staged file: $staged"
+  staged=$(find "$state/receipt-target" -mindepth 1 -maxdepth 1 -print -quit)
+  [ -z "$staged" ] || fail "the failed receipt commit moved its staged file into the destination directory: $staged"
+
+  rm -f "$state/.open-decisions-presentation"
+  FM_HOME="$dir/home" FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" \
+    || fail "delta drain did not recover after removing the invalid receipt destination"
+  grep -F 'task-receipt [key=release] needs-decision: pick stable or canary' "$out" >/dev/null \
+    || fail "a failed receipt commit incorrectly acknowledged the first presentation: $(cat "$out")"
+  grep -Fx '1 open (0 unchanged) - full list: bin/fm-wake-drain.sh --open-decisions' "$out" >/dev/null \
+    || fail "recovery from an invalid receipt destination produced the wrong summary: $(cat "$out")"
+  pass "delta receipt commit rejects directory symlinks and cleans its staged state"
+}
+
 # The per-item cut now comes from bin/fm-line-cap-lib.sh, shared with the
 # session-start digest's status tails so one truncation marker means the same
 # thing wherever an agent meets it. This pins the drain's own end of that
@@ -377,6 +406,7 @@ test_delta_mode_reports_only_changes_and_always_summarizes
 test_full_list_command_has_no_aggregate_byte_cap
 test_delta_mode_emits_every_over_cap_open_and_closed_entry
 test_delta_mode_summarizes_an_empty_fleet
+test_delta_receipt_rejects_a_symlinked_directory_destination
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it
 test_later_unrelated_terminal_line_does_not_close_it
