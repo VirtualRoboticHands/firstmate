@@ -516,8 +516,12 @@ EOF
 
 stage_open_decisions_presentation() {  # <open-set>
   local open=$1
-  # Receipt identity is the reader-visible task, key, verb, and note. A retired
-  # and recreated task with the same identity is net-unchanged by design.
+  # Receipt identity is the reader-visible task, key, verb, and note. If a key's
+  # final row matches its last-presented row, the snapshot diff classifies it
+  # unchanged even when the task ID was retired and recreated or the same task
+  # closed and reopened that decision between drains. The open decision remains
+  # in the count and uncapped --open-decisions list; reporting those intermediate
+  # transitions is a non-goal.
   OPEN_DECISIONS_PRESENTATION_TMP=$(mktemp "$STATE/.open-decisions-presentation.XXXXXX") || return 1
   {
     printf 'version=1\n'
