@@ -1,0 +1,20 @@
+=== [base] fm-fleet-snapshot.sh --contribution-input
+rc=0
+/tmp/fm-basebin.mmxNxk/fm-fleet-snapshot.sh: line 1994: /usr/bin/jq: Argument list too long
+=== [base] fm-fleet-snapshot.sh --json
+rc=0 stderr: 
+{"records":2000,"contributions":"object"}
+=== [base] fm-bearings-snapshot.sh --json
+rc=0 stderr: 
+["contributions","decisions_open","gates","generated","home","in_flight","landed","omitted","prs","recorded_prs","reports","schema","secondmate_reconcile","secondmates"]
+
+=== [fix] fm-fleet-snapshot.sh --contribution-input
+rc=0
+{"records":2000,"records_json_bytes":2222894,"tasks":0}
+=== [fix] fm-fleet-snapshot.sh --json
+rc=0 stderr: 
+{"records":2000,"contributions":"object"}
+=== [fix] fm-bearings-snapshot.sh --json
+rc=0 stderr: 
+["contributions","decisions_open","gates","generated","home","in_flight","landed","omitted","prs","recorded_prs","reports","schema","secondmate_reconcile","secondmates"]
+

@@ -1,0 +1,155 @@
+
+================================================================================
+SESSION START - /tmp/fm-lab.gvQTTO
+================================================================================
+
+LOCK
+--------------------------------------------------------------------------------
+lock acquired: harness pid 1836474
+
+BOOTSTRAP
+--------------------------------------------------------------------------------
+/tmp/fm-basebin.mmxNxk/backends/herdr.sh: line 79: /tmp/bin/fm-composer-lib.sh: No such file or directory
+/tmp/fm-basebin.mmxNxk/backends/herdr.sh: line 87: /tmp/bin/fm-transition-lib.sh: No such file or directory
+/tmp/fm-basebin.mmxNxk/backends/herdr.sh: line 94: /tmp/bin/fm-agent-process-lib.sh: No such file or directory
+MISSING: quota-axi (install: npm install -g quota-axi)
+/tmp/fm-basebin.mmxNxk/fm-fleet-snapshot.sh: line 1994: /usr/bin/jq: Argument list too long
+
+WAKE QUEUE
+--------------------------------------------------------------------------------
+(no queued wakes)
+================================================================================
+SUPERVISION OPERATING INSTRUCTIONS - primary harness: claude
+================================================================================
+Current state:
+- Lock: held by this session; this session owns normal supervision unless away mode says otherwise.
+- Away/quiet mode: inactive.
+- X mode: inactive; use the default watcher cadence.
+- Ordinary wake: the Stop-owned auto-arm (bin/fm-claude-stop-autoarm.sh) already owns watcher continuity; drain and handle the wake, and do not arm another cycle yourself.
+
+/tmp/fm-basebin.mmxNxk/fm-supervision-instructions.sh: line 136: /tmp/docs/supervision-protocols/unknown.md: No such file or directory
+
+================================================================================
+READ-ONCE CONTRACT
+================================================================================
+Everything below is printed in full for this session start: every state/*.meta,
+a compact data/backlog.md listing, a bounded tail of every state/*.status,
+data/projects.md, data/secondmates.md, data/captain.md, data/captain-shared.md,
+and data/learnings.md.
+Do NOT re-read any of them after reading this digest, and do NOT bulk-read
+data/backlog.md or state/*.status: re-reading everything defeats the entire
+point of this command.
+
+Go to a source directly only when:
+  - this digest flagged it ABSENT (then rebuild or create it per AGENTS.md),
+  - its contents looked unparseable or corrupt,
+  - an individual full status log is needed for older wake-event history, or a
+    status line was capped and its tail matters (each task's full log path is
+    printed with its tail),
+  - a full task body is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
+  - the backlog listing disclosed omitted queued items and this turn needs them,
+  - the NETWORK CHECKS section reported its checks still IN PROGRESS and this
+    turn needs their verdict (bin/fm-startup-network.sh report),
+  - or a STARTUP TRUNCATED banner named the stage that would have printed it, in
+    which case that stage's sources were never emitted and must be reconciled.
+
+================================================================================
+FLEET STATE
+================================================================================
+
+data/backlog.md
+--------------------------------------------------------------------------------
+compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)
+
+in flight:
+count: 0
+tasks: 0 in_flight tasks in this backlog
+
+held (captain- or time-gated; an in-flight item that is also held appears in both groups):
+count: 0
+tasks: 0 held tasks in this backlog
+
+blocked queued:
+count: 0
+tasks: 0 blocked queued tasks in this backlog
+
+ready queued (dispatchable now):
+count: 2000
+ready[2000]{id,state,kind,repo,title}:
+  bulk-0001,queued,ship,alpha,"Bulk padding task 0001 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0001 --full to see complete text)"
+  bulk-0002,queued,ship,alpha,"Bulk padding task 0002 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0002 --full to see complete text)"
+  bulk-0003,queued,ship,alpha,"Bulk padding task 0003 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0003 --full to see complete text)"
+  bulk-0004,queued,ship,alpha,"Bulk padding task 0004 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0004 --full to see complete text)"
+  bulk-0005,queued,ship,alpha,"Bulk padding task 0005 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0005 --full to see complete text)"
+  bulk-0006,queued,ship,alpha,"Bulk padding task 0006 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0006 --full to see complete text)"
+  bulk-0007,queued,ship,alpha,"Bulk padding task 0007 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0007 --full to see complete text)"
+  bulk-0008,queued,ship,alpha,"Bulk padding task 0008 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0008 --full to see complete text)"
+  bulk-0009,queued,ship,alpha,"Bulk padding task 0009 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0009 --full to see complete text)"
+  bulk-0010,queued,ship,alpha,"Bulk padding task 0010 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0010 --full to see complete text)"
+  bulk-0011,queued,ship,alpha,"Bulk padding task 0011 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0011 --full to see complete text)"
+  bulk-0012,queued,ship,alpha,"Bulk padding task 0012 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0012 --full to see complete text)"
+  bulk-0013,queued,ship,alpha,"Bulk padding task 0013 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0013 --full to see complete text)"
+  bulk-0014,queued,ship,alpha,"Bulk padding task 0014 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0014 --full to see complete text)"
+  bulk-0015,queued,ship,alpha,"Bulk padding task 0015 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0015 --full to see complete text)"
+  bulk-0016,queued,ship,alpha,"Bulk padding task 0016 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0016 --full to see complete text)"
+  bulk-0017,queued,ship,alpha,"Bulk padding task 0017 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0017 --full to see complete text)"
+  bulk-0018,queued,ship,alpha,"Bulk padding task 0018 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0018 --full to see complete text)"
+  bulk-0019,queued,ship,alpha,"Bulk padding task 0019 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0019 --full to see complete text)"
+  bulk-0020,queued,ship,alpha,"Bulk padding task 0020 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n... (truncated, 223 chars total - use show bulk-0020 --full to see complete text)"
+ready_public_followups: 0 delivery-ready obligations
+(shown 20 of 2000 ready queued item(s))
+(1980 more queued - bin/fm-tasks-axi.sh ready)
+Full task bodies remain available on demand: bin/fm-tasks-axi.sh show <id> --full when compatible tasks-axi is available, or data/backlog.md.
+
+Work under way (state/*.meta)
+--------------------------------------------------------------------------------
+(none)
+
+Orphan status logs (state/*.status without matching .meta)
+--------------------------------------------------------------------------------
+(none)
+
+AFK
+--------------------------------------------------------------------------------
+absent
+
+================================================================================
+NETWORK CHECKS
+================================================================================
+completed off the startup path in 1s: GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, and inactive terminal-outcome reconciliation.
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+These ran AFTER the sections above were composed, so re-read any record a line here names.
+
+================================================================================
+CONTEXT
+================================================================================
+
+data/projects.md
+--------------------------------------------------------------------------------
+ABSENT
+
+data/secondmates.md
+--------------------------------------------------------------------------------
+ABSENT
+
+data/captain.md
+--------------------------------------------------------------------------------
+ABSENT
+
+data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)
+--------------------------------------------------------------------------------
+ABSENT
+
+data/learnings.md
+--------------------------------------------------------------------------------
+ABSENT
+
+================================================================================
+NEXT STEP
+================================================================================
+Follow the supervision operating instructions block above for harness 'claude'.
+This script never starts supervision itself.
+
+The digest above is complete for this session start. The READ-ONCE CONTRACT
+section near the top of it governs what may still be read from disk.
